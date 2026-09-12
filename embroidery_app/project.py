@@ -17,9 +17,10 @@ def _png(array):
     return buffer.getvalue()
 
 
-def save_project(filename, image, alpha, document, settings):
+def save_project(filename, image, alpha, document, settings, format_name=None):
     target = Path(filename)
-    metadata = dict(version=1, settings=settings, notes=document.notes, layers=[])
+    format_name = format_name or ("threadform-emb" if target.suffix.lower() == ".emb" else "stitchforge")
+    metadata = dict(version=1, format=format_name, settings=settings, notes=document.notes, layers=[])
     fd, temporary = tempfile.mkstemp(suffix=".stitchforge", dir=target.parent)
     os.close(fd)
     try:
