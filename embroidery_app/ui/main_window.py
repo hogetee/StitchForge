@@ -3,8 +3,9 @@ from time import monotonic
 import numpy as np
 from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QPushButton,
     QLabel,QFileDialog,QMessageBox,QSplitter,QComboBox,QCheckBox,QDoubleSpinBox,
-    QSpinBox,QFormLayout,QGroupBox,QApplication,QProgressBar)
-from PySide6.QtCore import QObject,Signal,Slot,QThread,Qt
+    QSpinBox,QFormLayout,QGroupBox,QApplication,QProgressBar,QTabWidget,QScrollArea,
+    QAbstractButton,QAbstractSpinBox,QListWidget)
+from PySide6.QtCore import QObject,Signal,Slot,QThread,Qt,QTimer
 from embroidery_app.ui.image_canvas import ImageCanvas
 from embroidery_app.ui.stitch_preview import StitchPreview
 from embroidery_app.examples import proof_design
@@ -12,6 +13,8 @@ from embroidery_app.exporters.dst import export_dst
 from embroidery_app.embroidery.engine import digitize
 from embroidery_app.embroidery.validation import validate
 from embroidery_app.embroidery.models import Command
+from embroidery_app.ui.layer_panel import LayerPanel
+from embroidery_app.ui.layer_workflow import LayerWorkflow
 
 
 class Digitizer(QObject):
@@ -27,7 +30,8 @@ class Digitizer(QObject):
     @Slot()
     def run(self):
         try:
-            design,metrics=digitize(self.image,self.mask,progress=self.progress.emit,**self.settings)
+            design,metrics=digitize(self.image,self.mask,progress=lambda value,message:
+                self.progress.emit(value*0.95,'Preparing stitch preview' if value>=1 else message),**self.settings)
             self.finished.emit(design,metrics)
         except Exception as error:
             self.failed.emit(str(error))
@@ -35,7 +39,7 @@ class Digitizer(QObject):
             self.done.emit()
 
 
-class MainWindow(QMainWindow):
+class MainWindow(LayerWorkflow,QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Threadform • Local Embroidery")
@@ -44,10 +48,20 @@ class MainWindow(QMainWindow):
         self.worker=None
         self.design=None
         self.dirty=False
+        self.document=None
+        self.active_layer=-1
+        self.undo_layers=[]; self.redo_layers=[]
+        self.project_dirty=False
         self._progress_started_at=None
         self._progress_elapsed=0.0
+        self._last_fraction=0.0
+        self._last_stage='Preparing artwork'
+        self.progress_timer=QTimer(self)
+        self.progress_timer.setInterval(250)
+        self.progress_timer.timeout.connect(lambda:self.generation_progress(self._last_fraction,self._last_stage))
         self.setStyleSheet("""
             QMainWindow {background:#f1f3f2;}
+            QWidget {color:#263c40;}
             QLabel {color:#263c40;}
             QPushButton {padding:7px 12px;border:1px solid #c8d2d0;border-radius:5px;background:#ffffff;color:#233e42;}
             QPushButton:hover {background:#e4efec;}
@@ -55,6 +69,11 @@ class MainWindow(QMainWindow):
             QGroupBox {font-weight:600;border:1px solid #d3dcd8;border-radius:6px;margin-top:12px;padding-top:14px;}
             QGroupBox::title {subcontrol-origin:margin;left:12px;}
             QComboBox,QSpinBox,QDoubleSpinBox {padding:5px;min-height:20px;}
+            QComboBox,QSpinBox,QDoubleSpinBox,QListWidget {background:#fff;color:#263c40;}
+            QTabWidget::pane {border:1px solid #d3dcd8;}
+            QTabBar::tab {padding:8px;background:#e4ece8;color:#263c40;}
+            QTabBar::tab:selected {background:#fff;}
+            QScrollArea,QWidget#layer_page,QWidget#select_page,QWidget#stitch_page {background:#f1f3f2;}
         """)
         root=QWidget()
         self.setCentralWidget(root)
@@ -66,10 +85,13 @@ class MainWindow(QMainWindow):
         layout.addLayout(bar)
         self.canvas=ImageCanvas()
         self.canvas.mask_changed.connect(self.mask_changed)
+        self.canvas.edit_started.connect(self.checkpoint)
+        self.canvas.layer_picked.connect(self.pick_layer)
         for label,callback in [("Open Image",self.open_image),("Fit",self.canvas.fit),
                                ("Reset view",self.canvas.reset),("Select all",self.canvas.select_all),
                                ("Clear",self.canvas.clear_selection),("Clean mask",self.canvas.clean),
-                               ("Save mask",self.save_mask)]:
+                               ("Save mask",self.save_mask),("Open Project",self.open_layer_project),
+                               ("Save Project",self.save_layer_project)]:
             self.button(bar,label,callback)
         self.proofs=QComboBox()
         self.proofs.addItems(["Load proof…","Square","Circle","Multicolor"])
@@ -78,13 +100,28 @@ class MainWindow(QMainWindow):
         content=QHBoxLayout()
         layout.addLayout(content,1)
         sidebar=QWidget()
-        sidebar.setFixedWidth(265)
+        sidebar.setFixedWidth(315)
         side=QVBoxLayout(sidebar)
         content.addWidget(sidebar)
+        self.sidebar_tabs=QTabWidget()
+        side.addWidget(self.sidebar_tabs,1)
+        selection_page=QWidget(); selection_page.setObjectName('select_page'); selection_layout=QVBoxLayout(selection_page)
+        selection_scroll=QScrollArea(); selection_scroll.setWidgetResizable(True); selection_scroll.setWidget(selection_page)
+        self.sidebar_tabs.addTab(selection_scroll,'Select')
+        self.layer_panel=LayerPanel()
+        self.layer_panel.setObjectName('layer_page')
+        self.layer_panel.selected.connect(self.select_layer)
+        self.layer_panel.changed.connect(self.edit_layer)
+        self.layer_panel.action.connect(self.layer_action)
+        layer_scroll=QScrollArea(); layer_scroll.setWidgetResizable(True); layer_scroll.setWidget(self.layer_panel)
+        self.sidebar_tabs.addTab(layer_scroll,'Layers')
+        settings_page=QWidget(); settings_page.setObjectName('stitch_page'); settings_layout=QVBoxLayout(settings_page)
+        settings_scroll=QScrollArea(); settings_scroll.setWidgetResizable(True); settings_scroll.setWidget(settings_page)
+        self.sidebar_tabs.addTab(settings_scroll,'Stitches')
         group=QGroupBox("1  Select artwork")
         form=QFormLayout(group)
         self.tools=QComboBox()
-        self.tools.addItems(["Rectangle","Polygon","Brush","Color region","Pan"])
+        self.tools.addItems(["Rectangle","Polygon","Brush","Color region","Pick layer","Pan"])
         self.tools.currentTextChanged.connect(self.canvas.set_tool)
         form.addRow("Tool",self.tools)
         self.subtract=QCheckBox("Subtract from selection")
@@ -96,13 +133,19 @@ class MainWindow(QMainWindow):
         hint=QLabel("Polygon: click vertices, then right-click to finish. Scroll to zoom. Choose Pan to drag the canvas.")
         hint.setWordWrap(True)
         form.addRow(hint)
-        side.addWidget(group)
-        group=QGroupBox("2  Embroidery settings")
+        selection_layout.addWidget(group)
+        selection_layout.addWidget(self.segmentation_controls())
+        selection_layout.addStretch()
+        group=QGroupBox("Embroidery settings")
         form=QFormLayout(group)
         self.width=self.spin(0.1,300,80," mm")
         self.height=self.spin(0.1,300,60," mm")
         self.aspect=QCheckBox("Maintain selection aspect ratio"); self.aspect.setChecked(True)
-        self.colors=QSpinBox(); self.colors.setRange(1,5); self.colors.setValue(3)
+        self.colors=QSpinBox(); self.colors.setRange(1,5); self.colors.setValue(4)
+        # Palette count belongs to separation; edited layer colors are retained when digitizing.
+        palette_form=QFormLayout()
+        palette_form.addRow('Separation colors',self.colors)
+        selection_layout.insertLayout(1,palette_form)
         self.spacing=self.spin(0.15,2,0.4," mm",0.05)
         self.length=self.spin(0.5,10,4," mm",0.5)
         self.angle=self.spin(0,179,25,"°",5)
@@ -110,7 +153,7 @@ class MainWindow(QMainWindow):
         self.mode=QComboBox(); self.mode.addItems(["Auto","Outline","Fill"])
         self.order=QComboBox(); self.order.addItems(["Palette order","Reverse palette"])
         for name,widget in [("Width",self.width),("Height",self.height),("",self.aspect),
-            ("Maximum colors",self.colors),("Row spacing",self.spacing),("Max stitch length",self.length),
+            ("Row spacing",self.spacing),("Max stitch length",self.length),
             ("Fill direction",self.angle),("Minimum region",self.minimum),("Strategy",self.mode),("Thread order",self.order)]:
             form.addRow(name,widget)
         self.width.valueChanged.connect(self.width_changed)
@@ -120,7 +163,9 @@ class MainWindow(QMainWindow):
             widget.valueChanged.connect(self.invalidate)
         for widget in [self.mode,self.order]:
             widget.currentTextChanged.connect(self.invalidate)
-        side.addWidget(group)
+        settings_layout.addWidget(group)
+        note=QLabel('With layers, checked parts sew in list order. Part colors and directions override the global settings.')
+        note.setWordWrap(True); settings_layout.addWidget(note); settings_layout.addStretch()
         self.generate_button=self.button(side,"Auto Digitize",self.generate)
         self.generate_button.setStyleSheet("background:#176e69;color:white;font-weight:600;padding:10px;")
         self.export_button=self.button(side,"Export DST",self.export)
@@ -171,8 +216,9 @@ class MainWindow(QMainWindow):
         return widget
 
     def ratio(self):
-        if self.canvas.mask is not None and self.canvas.mask.any():
-            ys,xs=np.nonzero(self.canvas.mask)
+        mask=self.document.foreground if self.document is not None else self.canvas.mask
+        if mask is not None and mask.any():
+            ys,xs=np.nonzero(mask)
             return (xs.max()-xs.min()+1)/(ys.max()-ys.min()+1)
         return 4/3
 
@@ -197,11 +243,14 @@ class MainWindow(QMainWindow):
         self.invalidate()
 
     def mask_changed(self,*args):
+        self.update_layer_mask()
         if hasattr(self,"width"):
             self.width_changed()
 
     def invalidate(self,*args):
         self.dirty=True
+        if self.document is not None:
+            self.project_dirty=True
         if hasattr(self,"export_button"):
             self.export_button.setEnabled(False)
         if self.design:
@@ -218,8 +267,9 @@ class MainWindow(QMainWindow):
 
     def open_image(self):
         path,_=QFileDialog.getOpenFileName(self,"Open image","","Images (*.png *.jpg *.jpeg)")
-        if path:
+        if path and self.confirm_replace_project():
             try:
+                self.reset_layers()
                 self.canvas.load(path)
                 self.statusBar().showMessage(f"{Path(path).name} · select the region you want to embroider")
             except Exception as error:
@@ -238,20 +288,43 @@ class MainWindow(QMainWindow):
                     spacing=self.spacing.value(),length=self.length.value(),angle=self.angle.value(),
                     min_area=self.minimum.value(),mode=self.mode.currentText(),reverse_colors=self.order.currentIndex()==1)
 
+    def set_busy(self,busy):
+        if busy:
+            self._last_fraction=0.0
+            self._last_stage='Preparing artwork'
+            self.progress_timer.start()
+            self._enabled_controls=[(widget,widget.isEnabled()) for widget in self.centralWidget().findChildren(QWidget)
+                if isinstance(widget,(QAbstractButton,QAbstractSpinBox,QComboBox,QListWidget))]
+            for widget,enabled in self._enabled_controls:
+                widget.setEnabled(False)
+            self.canvas.setEnabled(False)
+        else:
+            self.progress_timer.stop()
+            for widget,enabled in getattr(self,'_enabled_controls',[]):
+                widget.setEnabled(enabled)
+            self.canvas.setEnabled(True)
+            self.export_button.setEnabled(self.design is not None and not self.dirty and not validate(self.design)[0])
+            if self.document is not None:
+                self.layer_panel.show_settings(self.document,self.active_layer)
+
     def generate(self):
         if self.thread is not None:
             return
-        if self.canvas.mask is None or not self.canvas.mask.any():
+        mask=self.document.enabled_mask() if self.document is not None else self.canvas.mask
+        if mask is None or not mask.any():
             QMessageBox.information(self,"Select artwork","Open an image and select a non-empty region first.")
             return
-        self.centralWidget().setEnabled(False)
+        self.set_busy(True)
         self.statusBar().showMessage("Generating geometry and stitches…")
         self._progress_started_at=monotonic()
         self._progress_elapsed=0.0
         self.progress_bar.setValue(0)
         self.estimate_label.setText("Preparing selected artwork · estimating remaining time…")
         self.thread=QThread(self)
-        self.worker=Digitizer(self.canvas.image.copy(),self.canvas.mask.copy(),self.settings())
+        settings=self.settings()
+        if self.document is not None:
+            settings['layer_document']=self.document.copy()
+        self.worker=Digitizer(self.canvas.image.copy(),mask.copy(),settings)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.finished.connect(self.accept_design)
@@ -266,10 +339,11 @@ class MainWindow(QMainWindow):
     @Slot()
     def worker_finished(self):
         self.thread=None; self.worker=None
-        self.centralWidget().setEnabled(True)
+        self.set_busy(False)
 
     @Slot(str)
     def generation_failed(self,message):
+        self.progress_timer.stop()
         self.statusBar().showMessage("Digitizing failed; adjust the selection or settings.")
         if self._progress_started_at is not None:
             self._progress_elapsed=monotonic()-self._progress_started_at
@@ -288,6 +362,8 @@ class MainWindow(QMainWindow):
     @Slot(float,str)
     def generation_progress(self,fraction,message):
         fraction=max(0.0,min(1.0,float(fraction)))
+        self._last_fraction=fraction
+        self._last_stage=message
         self.progress_bar.setValue(round(fraction*100))
         if self._progress_started_at is None:
             self._progress_started_at=monotonic()
@@ -306,6 +382,8 @@ class MainWindow(QMainWindow):
     @Slot(object,object)
     def accept_design(self,design,metrics):
         self.design=design; self.dirty=False
+        self.progress_timer.stop()
+        self.preview.display(design)
         if self._progress_started_at is not None and metrics:
             self._progress_elapsed=monotonic()-self._progress_started_at
             self.progress_bar.setValue(100)
@@ -313,13 +391,17 @@ class MainWindow(QMainWindow):
         elif not metrics:
             self.progress_bar.setValue(100)
             self.estimate_label.setText("Preview loaded · ready to digitize")
-        self.preview.display(design)
+        else:
+            self.progress_bar.setValue(100)
+            self.estimate_label.setText("Stitch preview ready")
         errors,warnings=validate(design,12.1 if not metrics else self.length.value())
         counts={c:sum(s.command==c for s in design.stitches) for c in Command}
         text=(f"{design.width_mm:g} × {design.height_mm:g} mm  ·  {counts[Command.STITCH]:,} stitches  ·  "
               f"{counts[Command.JUMP]:,} jumps  ·  {counts[Command.COLOR_CHANGE]} color changes  ·  {len(design.thread_colors)} threads")
         if metrics:
             text+=f"\nTravel: {metrics['before']['jump_distance_mm']:g} → {metrics['after']['jump_distance_mm']:g} mm · Palette: "+", ".join(design.thread_colors)
+            if metrics.get('omitted_layers'):
+                text+='\nFiltered out: '+', '.join(metrics['omitted_layers'])+' (reduce minimum area or enable Keep small details)'
         kinds={obj.stitch_type.value for obj in design.objects}
         if kinds:
             text+="\nStitch types: "+", ".join(sorted(kinds))
@@ -353,4 +435,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Please wait for digitizing to finish before closing.")
             event.ignore()
         else:
-            event.accept()
+            if self.confirm_replace_project():
+                event.accept()
+            else:
+                event.ignore()

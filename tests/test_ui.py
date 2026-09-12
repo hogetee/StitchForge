@@ -94,3 +94,72 @@ def test_full_desktop_workflow(tmp_path,monkeypatch):
     window.width.setValue(90)
     assert not window.export_button.isEnabled()
     window.close()
+
+
+def test_layer_desktop_workflow(tmp_path,monkeypatch):
+    from embroidery_app.ui.main_window import MainWindow
+    from PySide6.QtWidgets import QFileDialog,QMessageBox
+    from PySide6.QtCore import QEventLoop,QTimer
+    from test_layers import character_fixture
+    from embroidery_app.project import load_project
+    app=QApplication.instance() or QApplication([])
+    image,_,_,_=character_fixture()
+    source=tmp_path/'character.png'; Image.fromarray(image).save(source)
+    window=MainWindow(); window.show(); app.processEvents()
+    monkeypatch.setattr(QMessageBox,'question',lambda *a,**k:QMessageBox.Yes)
+    monkeypatch.setattr(QMessageBox,'information',lambda *a,**k:QMessageBox.Ok)
+    monkeypatch.setattr(QMessageBox,'warning',lambda *a,**k:QMessageBox.Yes)
+    monkeypatch.setattr(QFileDialog,'getOpenFileName',lambda *a,**k:(str(source),''))
+    window.open_image()
+    window.colors.setValue(3); window.min_part.setValue(15)
+
+    def wait_for_worker():
+        loop=QEventLoop()
+        window.thread.finished.connect(loop.quit)
+        QTimer.singleShot(20000,loop.quit)
+        loop.exec(); app.processEvents()
+        assert window.thread is None
+
+    window.separate(); wait_for_worker()
+    assert window.document is not None
+    assert len(window.document.layers)>=5
+    assert not window.document.foreground[0,0]
+    assert not window.export_button.isEnabled()
+    eye=next(i for i,p in enumerate(window.document.layers) if p.mask[115,92])
+    window.layer_panel.list.setCurrentRow(eye)
+    assert np.array_equal(window.canvas.mask,window.document.layers[eye].mask)
+    window.layer_panel.list.item(eye).setText('Left eye')
+    assert window.document.layers[eye].name=='Left eye'
+    size=(window.width.value(),window.height.value())
+    window.tools.setCurrentText('Brush'); window.canvas.brush_size=4
+    window.subtract.setChecked(True)
+    QTest.mouseClick(window.canvas.viewport(),Qt.LeftButton,pos=window.canvas.mapFromScene(92,115))
+    assert not window.document.layers[eye].mask[115,92]
+    window.layer_action('undo')
+    assert window.document.layers[eye].mask[115,92]
+    assert (window.width.value(),window.height.value())==size
+    window.layer_action('up')
+    assert window.document.layers[eye-1].name=='Left eye'
+    # Disable a part through the checkbox and keep user ordering through export.
+    window.layer_panel.list.item(0).setCheckState(Qt.Unchecked)
+    hidden=window.document.layers[0].id
+    window.generate(); wait_for_worker()
+    assert window.design and window.progress_bar.value()==100
+    assert window.export_button.isEnabled()
+    assert hidden not in {o.layer_id for o in window.design.objects}
+    path=tmp_path/'editable.stitchforge'
+    monkeypatch.setattr(QFileDialog,'getSaveFileName',lambda *a,**k:(str(path),''))
+    window.save_layer_project()
+    assert path.exists() and not window.project_dirty
+    _,_,saved,_=load_project(path)
+    assert any(p.name=='Left eye' for p in saved.layers)
+    monkeypatch.setattr(QFileDialog,'getOpenFileName',lambda *a,**k:(str(path),''))
+    window.open_layer_project()
+    assert not window.project_dirty and not window.export_button.isEnabled()
+    window.generate(); wait_for_worker()
+    dst=tmp_path/'layer-output.dst'
+    monkeypatch.setattr(QFileDialog,'getSaveFileName',lambda *a,**k:(str(dst),''))
+    window.export_button.click()
+    assert dst.exists()
+    window.project_dirty=False
+    window.close()

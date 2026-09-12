@@ -15,20 +15,27 @@ def polygons(geometry):
     return [p for part in getattr(geometry,"geoms",[]) for p in polygons(part)]
 
 
-def vectorize(image,mask,width_mm,height_mm,colors=3,min_area_mm2=0.3,simplify_mm=0.15):
+def vectorize(image,mask,width_mm,height_mm,colors=3,min_area_mm2=0.3,simplify_mm=0.15,
+              frame=None, solid_color=None):
     if image.shape[:2]!=mask.shape or not mask.any():
         raise ValueError("Select a non-empty region first")
     if not 1<=colors<=5 or width_mm<=0 or height_mm<=0:
         raise ValueError("Invalid size or color count")
     ys,xs=np.nonzero(mask)
     x0,y0,x1,y1=xs.min(),ys.min(),xs.max()+1,ys.max()+1
+    if frame is not None:
+        x0,y0,x1,y1=frame
     crop=image[y0:y1,x0:x1]
     selected=mask[y0:y1,x0:x1]>0
-    pixels=crop[selected]
-    palette_image=Image.fromarray(pixels.reshape(1,-1,3)).quantize(colors=colors,method=Image.Quantize.MEDIANCUT)
-    palette=np.array(palette_image.getpalette(),np.uint8).reshape(-1,3)
-    label_values=np.array(palette_image).ravel()
     labels=np.full(selected.shape,-1,np.int16)
+    if solid_color is not None:
+        palette=np.array([list(bytes.fromhex(solid_color.lstrip('#')))],np.uint8)
+        label_values=np.zeros(np.count_nonzero(selected),np.uint8)
+    else:
+        pixels=crop[selected]
+        palette_image=Image.fromarray(pixels.reshape(1,-1,3)).quantize(colors=colors,method=Image.Quantize.MEDIANCUT)
+        palette=np.array(palette_image.getpalette(),np.uint8).reshape(-1,3)
+        label_values=np.array(palette_image).ravel()
     labels[selected]=label_values
     sx,sy=width_mm/(x1-x0),height_mm/(y1-y0)
     regions=[]

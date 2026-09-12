@@ -88,7 +88,18 @@ Status vocabulary: NOT STARTED, IN PROGRESS, BLOCKED, DONE. DONE means the accep
 - Acceptance: complete workflow exercised through Qt controls and saved DST; all ten source/mask/DST/readback sets generated and visually inspected.
 - Tests: 37 automated tests pass without warnings; progress callbacks are monotonic and the desktop workflow ends at 100% with elapsed time shown; native macOS startup passes. `examples/logos/verification.json` records generated output checks.
 - Limitations: engineering V1 with limitations in `docs/LIMITATIONS.md`; no physical sew-outs, signed packaging, underlay, tie-off or automatic trims.
-- Next action: sew representative samples on intended fabric/machine, then prioritize underlay, ties, trims and project persistence.
+- Next action: sew representative samples on intended fabric/machine, then prioritize underlay, ties and trims. Editable layer persistence is now implemented in milestone 11.
+
+## 11 — Foreground separation and editable object layers — DONE
+- Objective: preserve recognizable parts of shaded artwork, allow correction of each part, and export stitches from those layers.
+- Tasks: local foreground extraction; edge-preserving color simplification with dark-detail retention; connected-part layers and editing; layer-aware digitizing with common coordinates; image-based and UI acceptance tests.
+- Acceptance: background excluded, face/eye/mouth shapes remain visible on a representative character; user can change masks, colors, names and order; hidden parts excluded; layer project survives save/reopen; DST readback preserves the result.
+- Implementation: local GrabCut/alpha foreground extraction; edge-preserving simplification with reserved dark palette seed; connected part masks; name/color/visibility/mode/direction edits, mask painting, merge/reorder/new/delete, undo/redo; portable JSON/PNG layer projects; common-frame vectorization and layer-ordered digitizing. Progress and approximate ETA cover separation and generation.
+- Tests: 44 public tests plus one configured private-image test pass (45 total). Tests cover background IoU, eye/mouth recall, deterministic proposals, disjoint masks, common coordinates, layer order/visibility, painting ownership, project roundtrip/rejection, direction overrides, and a complete Qt layer edit/save/reopen/DST workflow. Native macOS project startup succeeds.
+- Actual-image acceptance: the user's monkey image separates into 40 editable regions across 4 colors. Each eye and the smile are separate protected regions; the outer background and the hole in the hanging loop are excluded. Exported DST has 4,616 stitches and 3 color changes at 80 × 87.32 mm; actual readback preview visually retains the face. Output is local in `output/monkey/`, excluded from Git.
+- Limitations: local image-based separation proposes regions; it does not assign guaranteed semantic names such as eye or mouth. Arbitrary photographs may require user correction.
+- Remaining limitations: background/semantic ambiguity still needs manual correction; many jumps remain around fragmented regions. No physical sew-out has been performed, and underlay/tie-offs/automatic trims are still absent.
+- Next action: physical sew-out and better fill travel routing; general semantic naming would require a separately validated model and dataset.
 
 ## Verification notes
 

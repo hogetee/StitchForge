@@ -35,11 +35,30 @@ On this configured Mac, double-click `Launch.command`, or run `.venv/bin/python 
 5. Inspect stitches, dashed jumps, polygon boundaries, object order and statistics. Adjust and regenerate as needed.
 6. Export DST. Review any displayed warnings. The app reads the temporary DST back and verifies it before saving the destination.
 
+## Separate shaded artwork into editable parts
+
+1. In **Select**, open the image and optionally draw a loose rectangle around the object. With no selection, separation uses the full image. Leave some background margin around opaque objects.
+2. Choose 3–5 **Separation colors**, leave **Remove background** and **Preserve dark details** enabled, and click **Separate into layers**. Transparent images use their alpha mask. Turn off background removal to use a carefully drawn foreground mask as-is.
+3. Review the simplified artwork. **Layers** lists connected parts, with dark details kept as distinct parts where possible. The algorithm proposes color/shape regions; it does not automatically know names such as eye, ear, or mouth. Double-click a part's name to rename it.
+4. Select a part, then use Brush/Polygon in **Select** to correct its mask. Painting claims pixels from other parts; subtracting leaves empty fabric. **Pick layer** lets you click a part on the canvas. **Edit foreground selection** switches back to the overall object mask. Changing overall selection clips existing parts and creates an Added foreground part for newly included pixels.
+5. Change part color, strategy or direction; toggle its checkbox to include/exclude it from DST. Use Up/Down to set sewing order, Cmd/Ctrl-select parts and Merge to combine them, or New part to paint a separate feature. Undo/Redo applies to layer edits (up to 20 steps, bounded by memory).
+6. In **Stitches**, set physical size and stitch settings, then **Auto Digitize**. Checked layers share one coordinate system and preserve the chosen layer order. Hidden layers do not change the scale of remaining features. Small protected details use a lower area threshold; omitted layers are listed in the result.
+7. **Save Project** stores the source, masks, colors, names, order and settings in an editable `.stitchforge` file. **Open Project** restores them; regenerate the preview before export. Exact RGB colors live in the project, because DST itself does not store them.
+
+Jumps are hidden by default so they do not obscure the face; enable Jumps to inspect travel. Segmentation and digitizing have progress/elapsed/approximate ETA displays. Stage weights estimate remaining work; ETA is not a completion-time guarantee, especially during one expensive region.
+
+Open a saved project with `.venv/bin/python -m embroidery_app.app --project path/to/artwork.stitchforge --digitize`.
+
+Run a local image acceptance export with `.venv/bin/python scripts/digitize_layers.py "image.png" output/review`. It writes an editable project, foreground mask, simplified artwork, DST, actual DST readback preview and verification report. `output/` is ignored by Git so private images and derivatives stay local.
+
+Foreground extraction uses the local [OpenCV GrabCut mask API](https://docs.opencv.org/4.12.0/dd/dfc/tutorial_js_grabcut.html). Edge-preserving smoothing, deterministic color clustering with a reserved dark-detail seed, and connected components produce the editable parts. No model download or cloud service is required.
+
 For development, `requirements-lock.txt` records the exact dependency versions tested on macOS arm64. Install with `.venv/bin/pip install -r requirements-lock.txt` followed by `.venv/bin/pip install -e . --no-deps`.
 
 ## Verification and examples
 
-- 36 automated tests cover DST round trips, geometric containment, planner rules, satin rails, optimizer travel, selection tools, and the complete desktop selection-to-export workflow.
+- 44 public automated tests cover DST round trips, geometric containment, planner rules, satin rails, optimizer travel, segmentation, editable layer persistence, selection tools, and the desktop selection-to-export workflow.
+- An additional private-image acceptance test runs when `STITCHFORGE_MONKEY_IMAGE` points to the user's original monkey image. It verifies removed background, separate dark eye/mouth regions and nearby dark needle points in the exported DST; the full local run passes 45 tests.
 - Auto Digitize progress reports are covered by engine and desktop tests; the UI keeps the final elapsed time visible after completion.
 - `examples/` contains square, circle and multiple-color proof DSTs.
 - `examples/logos/` contains ten source images, selection masks, DST files, actual readback previews and `verification.json`. Regenerate with `.venv/bin/python scripts/build_examples.py`.

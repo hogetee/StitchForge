@@ -38,6 +38,8 @@ class EmbroideryObject:
     entry_point: tuple[float, float] | None = None
     exit_point: tuple[float, float] | None = None
     priority: int = 0
+    layer_id: str | None = None
+    layer_name: str | None = None
 
 
 @dataclass

@@ -8,6 +8,8 @@ from PySide6.QtCore import Qt,Signal
 
 class ImageCanvas(QGraphicsView):
     mask_changed = Signal()
+    edit_started = Signal()
+    layer_picked = Signal(int,int)
 
     def __init__(self):
         super().__init__()
@@ -23,6 +25,8 @@ class ImageCanvas(QGraphicsView):
         self.last = None
         self.overlay = None
         self.rubber = None
+        self.base = None
+        self.overlay_color = (25,180,170)
         self.setMouseTracking(True)
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
 
@@ -32,7 +36,10 @@ class ImageCanvas(QGraphicsView):
             # Bound CPU and memory for interactive processing.
             source.thumbnail((1600,1600))
             rgba = np.array(source)
-        self.alpha = rgba[:,:,3]
+        self.load_array(rgba)
+
+    def load_array(self,rgba):
+        self.alpha = rgba[:,:,3].copy()
         self.image = rgba[:,:,:3].copy()
         self.mask = np.zeros(self.image.shape[:2],np.uint8)
         self.scene().clear()
@@ -40,12 +47,26 @@ class ImageCanvas(QGraphicsView):
         self.rubber = None
         h,w = self.mask.shape
         qimage = QImage(rgba.data,w,h,rgba.strides[0],QImage.Format_RGBA8888).copy()
-        self.scene().addPixmap(QPixmap.fromImage(qimage))
+        self.base = self.scene().addPixmap(QPixmap.fromImage(qimage))
         self.overlay = self.scene().addPixmap(QPixmap())
         self.overlay.setZValue(1)
         self.scene().setSceneRect(0,0,w,h)
         self.fit()
         self.mask_changed.emit()
+
+    def display_pixels(self, rgb=None):
+        if self.image is None:
+            return
+        rgba=np.ascontiguousarray(np.dstack((self.image if rgb is None else rgb, self.alpha)))
+        h,w=rgba.shape[:2]
+        self.base.setPixmap(QPixmap.fromImage(QImage(rgba.data,w,h,rgba.strides[0],QImage.Format_RGBA8888).copy()))
+
+    def set_mask(self,mask):
+        self.mask=mask.copy()
+        self.points=[]
+        self.start=self.last=None
+        self.clear_rubber()
+        self.update_overlay(emit=False)
 
     def fit(self):
         self.fitInView(self.sceneRect(),Qt.KeepAspectRatio)
@@ -65,20 +86,22 @@ class ImageCanvas(QGraphicsView):
             self.scene().removeItem(self.rubber)
             self.rubber = None
 
-    def update_overlay(self):
+    def update_overlay(self,emit=True):
         if self.mask is None:
             return
         self.mask[self.alpha==0]=0
         h,w = self.mask.shape
         rgba = np.zeros((h,w,4),np.uint8)
-        rgba[:,:,:3]=(25,180,170)
+        rgba[:,:,:3]=self.overlay_color
         rgba[:,:,3]=np.where(self.mask>0,105,0)
         qimage=QImage(rgba.data,w,h,rgba.strides[0],QImage.Format_RGBA8888).copy()
         self.overlay.setPixmap(QPixmap.fromImage(qimage))
-        self.mask_changed.emit()
+        if emit:
+            self.mask_changed.emit()
 
     def clear_selection(self):
         if self.mask is not None:
+            self.edit_started.emit()
             self.mask.fill(0)
             self.points=[]
             self.clear_rubber()
@@ -86,11 +109,13 @@ class ImageCanvas(QGraphicsView):
 
     def select_all(self):
         if self.mask is not None:
+            self.edit_started.emit()
             self.mask[:]=255
             self.update_overlay()
 
     def clean(self):
         if self.mask is not None:
+            self.edit_started.emit()
             kernel=np.ones((3,3),np.uint8)
             self.mask=cv2.morphologyEx(self.mask,cv2.MORPH_OPEN,kernel)
             self.mask=cv2.morphologyEx(self.mask,cv2.MORPH_CLOSE,kernel)
@@ -120,6 +145,11 @@ class ImageCanvas(QGraphicsView):
         if event.button()!=Qt.LeftButton:
             return
         p=self.pos(event)
+        if self.tool=="Pick layer":
+            self.layer_picked.emit(*p)
+            return
+        if self.tool!="Polygon" or not self.points:
+            self.edit_started.emit()
         if self.tool=="Polygon":
             self.points.append(p)
             self.show_polygon()

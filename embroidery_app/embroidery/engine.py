@@ -1,3 +1,4 @@
+import numpy as np
 from embroidery_app.embroidery.models import EmbroideryDesign,Command,Stitch,StitchType
 from embroidery_app.embroidery.generators.running import running
 from embroidery_app.embroidery.generators.tatami import tatami
@@ -14,15 +15,49 @@ def _report(progress, fraction, message):
 
 
 def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0,
-             min_area=0.3,mode="Auto",reverse_colors=False,progress=None):
+             min_area=0.3,mode="Auto",reverse_colors=False,progress=None,layer_document=None):
     _report(progress, 0.02, "Preparing selected artwork")
-    regions=vectorize(image,mask,width,height,colors,min_area)
+    fill_angles={}
+    if layer_document is None:
+        regions=vectorize(image,mask,width,height,colors,min_area)
+        planned=plan(regions,spacing,length,angle,mode)
+    else:
+        if not layer_document.foreground.any():
+            raise ValueError("No foreground in the layer project")
+        ys,xs=np.nonzero(layer_document.foreground)
+        frame=(xs.min(),ys.min(),xs.max()+1,ys.max()+1)
+        regions,planned=[],[]
+        for index,layer in enumerate(layer_document.layers):
+            if not layer.enabled or not layer.mask.any():
+                continue
+            try:
+                parts=vectorize(image,layer.mask,width,height,1,
+                                min(min_area,0.03) if layer.protect_details else min_area,
+                                0.04 if layer.protect_details else 0.12,
+                                frame=frame,solid_color=layer.color)
+            except ValueError as error:
+                if str(error)=="No regions survive the minimum-area filter":
+                    continue
+                raise
+            objects=plan(parts,spacing,length,layer.angle if layer.angle is not None else angle,
+                         mode if layer.mode=="Auto" else layer.mode)
+            for obj in objects:
+                obj.id=f"{layer.id}:{obj.id}"
+                obj.layer_id=layer.id
+                obj.layer_name=layer.name
+                obj.priority=index
+                fill_angles[obj.id]=layer.angle if layer.angle is not None else angle
+            regions.extend(parts)
+            planned.extend(objects)
+            _report(progress,0.02+0.23*(index+1)/len(layer_document.layers),
+                    f"Vectorizing layer {index+1}/{len(layer_document.layers)}")
+        if not planned:
+            raise ValueError("No enabled layer survives the minimum-region filter")
     _report(progress, 0.25, f"Found {len(regions)} geometric regions")
     design=EmbroideryDesign(width,height,(image.shape[1],image.shape[0]),regions=[p for p,c in regions])
     if sum(p.area for p,c in regions)/(spacing*length)>150000:
         raise ValueError("Design would exceed the 150,000-stitch V1 limit; reduce size or increase spacing")
     blocks=[]
-    planned=plan(regions,spacing,length,angle,mode)
     _report(progress, 0.35, f"Planning {len(planned)} embroidery objects")
     total=max(1, len(planned))
     for index,obj in enumerate(planned):
@@ -37,10 +72,10 @@ def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0
                 path=satin(obj.geometry,spacing,length,obj.angle)
             except ValueError:
                 obj.stitch_type=StitchType.TATAMI
-                obj.angle=angle
-                path=tatami(obj.geometry,spacing,length,angle)
+                obj.angle=fill_angles.get(obj.id,angle)
+                path=tatami(obj.geometry,spacing,length,obj.angle)
         else:
-            path=tatami(obj.geometry,spacing,length,angle)
+            path=tatami(obj.geometry,spacing,length,obj.angle)
         if path and any(s.command==Command.STITCH for s in path):
             obj.entry_point=(path[0].x,path[0].y)
             obj.exit_point=(path[-1].x,path[-1].y)
@@ -51,7 +86,12 @@ def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0
                 f"Generating stitches {index + 1}/{len(planned)}")
     metrics={"before":travel(blocks)}
     _report(progress, 0.87, "Optimizing stitch order")
-    blocks=optimize(blocks,reverse_colors)
+    if layer_document is None:
+        blocks=optimize(blocks,reverse_colors)
+    else:
+        # User layer order is a sewing constraint; optimize only within each layer.
+        blocks=[block for layer in layer_document.layers
+                for block in optimize([b for b in blocks if b[0].layer_id==layer.id])]
     metrics["after"]=travel(blocks)
     _report(progress, 0.93, "Assembling thread colors")
     color=None
@@ -68,4 +108,8 @@ def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0
         last=design.stitches[-1]
         design.stitches.append(Stitch(last.x,last.y,Command.END))
     _report(progress, 1.0, "Digitizing complete")
+    if layer_document is not None:
+        emitted={obj.layer_id for obj in design.objects}
+        metrics['omitted_layers']=[layer.name for layer in layer_document.layers
+                                  if layer.enabled and layer.id not in emitted]
     return design,metrics

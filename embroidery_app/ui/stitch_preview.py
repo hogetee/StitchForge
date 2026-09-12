@@ -12,7 +12,7 @@ class StitchPreview(QGraphicsView):
         self.setBackgroundBrush(QColor("#f5f3ed"))
         self.setDragMode(QGraphicsView.ScrollHandDrag)
         self.design = None
-        self.layers = dict(stitches=True, jumps=True, polygons=False, order=False)
+        self.layers = dict(stitches=True, jumps=False, polygons=False, order=False)
 
     def display(self, design):
         self.design = design
