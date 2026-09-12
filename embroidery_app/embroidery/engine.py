@@ -6,6 +6,7 @@ from embroidery_app.embroidery.generators.satin import satin
 from embroidery_app.embroidery.planner import plan
 from embroidery_app.embroidery.optimizer import optimize,travel
 from embroidery_app.image_processing.vectorization import vectorize
+from embroidery_app.embroidery.exceptions import DigitizeCancelled
 
 
 def _report(progress, fraction, message):
@@ -14,8 +15,15 @@ def _report(progress, fraction, message):
         progress(max(0.0, min(1.0, float(fraction))), message)
 
 
+def _check_cancel(cancel_check):
+    if cancel_check is not None and cancel_check():
+        raise DigitizeCancelled()
+
+
 def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0,
-             min_area=0.3,mode="Auto",reverse_colors=False,progress=None,layer_document=None):
+             min_area=0.3,mode="Auto",reverse_colors=False,progress=None,layer_document=None,
+             cancel_check=None):
+    _check_cancel(cancel_check)
     _report(progress, 0.02, "Preparing selected artwork")
     fill_angles={}
     if layer_document is None:
@@ -28,6 +36,7 @@ def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0
         frame=(xs.min(),ys.min(),xs.max()+1,ys.max()+1)
         regions,planned=[],[]
         for index,layer in enumerate(layer_document.layers):
+            _check_cancel(cancel_check)
             if not layer.enabled or not layer.mask.any():
                 continue
             try:
@@ -61,6 +70,12 @@ def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0
     _report(progress, 0.35, f"Planning {len(planned)} embroidery objects")
     total=max(1, len(planned))
     for index,obj in enumerate(planned):
+        _check_cancel(cancel_check)
+        object_start=0.35 + 0.48 * index / total
+        object_span=0.48 / total
+        def row_progress(local, message, object_index=index):
+            _report(progress, object_start + object_span * local,
+                    f"Generating stitches {object_index + 1}/{len(planned)} · {message}")
         if obj.stitch_type==StitchType.RUNNING:
             path=[]
             for ring in [obj.geometry.exterior,*obj.geometry.interiors]:
@@ -69,19 +84,20 @@ def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0
                 path.extend(stitches[1:])
         elif obj.stitch_type==StitchType.SATIN:
             try:
-                path=satin(obj.geometry,spacing,length,obj.angle)
+                path=satin(obj.geometry,spacing,length,obj.angle,row_progress,cancel_check)
             except ValueError:
                 obj.stitch_type=StitchType.TATAMI
                 obj.angle=fill_angles.get(obj.id,angle)
-                path=tatami(obj.geometry,spacing,length,obj.angle)
+                path=tatami(obj.geometry,spacing,length,obj.angle,row_progress,cancel_check)
         else:
-            path=tatami(obj.geometry,spacing,length,obj.angle)
+            path=tatami(obj.geometry,spacing,length,obj.angle,row_progress,cancel_check)
         if path and any(s.command==Command.STITCH for s in path):
             obj.entry_point=(path[0].x,path[0].y)
             obj.exit_point=(path[-1].x,path[-1].y)
             blocks.append((obj,path))
             if sum(len(p) for o,p in blocks)>150000:
                 raise ValueError("Design exceeds the 150,000-command V1 limit")
+        _check_cancel(cancel_check)
         _report(progress, 0.35 + 0.48 * (index + 1) / total,
                 f"Generating stitches {index + 1}/{len(planned)}")
     metrics={"before":travel(blocks)}
@@ -96,6 +112,7 @@ def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0
     _report(progress, 0.93, "Assembling thread colors")
     color=None
     for obj,path in blocks:
+        _check_cancel(cancel_check)
         if obj.color!=color:
             if color is not None:
                 last=design.stitches[-1]

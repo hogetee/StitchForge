@@ -1,4 +1,5 @@
 from pathlib import Path
+from threading import Event
 from time import monotonic
 import numpy as np
 from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QPushButton,
@@ -13,6 +14,7 @@ from embroidery_app.exporters.dst import export_dst
 from embroidery_app.embroidery.engine import digitize
 from embroidery_app.embroidery.validation import validate
 from embroidery_app.embroidery.models import Command
+from embroidery_app.embroidery.exceptions import DigitizeCancelled
 from embroidery_app.ui.layer_panel import LayerPanel
 from embroidery_app.ui.layer_workflow import LayerWorkflow
 
@@ -21,18 +23,22 @@ class Digitizer(QObject):
     finished=Signal(object,object)
     failed=Signal(str)
     progress=Signal(float,str)
+    cancelled=Signal()
     done=Signal()
 
-    def __init__(self,image,mask,settings):
+    def __init__(self,image,mask,settings,cancel_event):
         super().__init__()
-        self.image,self.mask,self.settings=image,mask,settings
+        self.image,self.mask,self.settings,self.cancel_event=image,mask,settings,cancel_event
 
     @Slot()
     def run(self):
         try:
             design,metrics=digitize(self.image,self.mask,progress=lambda value,message:
-                self.progress.emit(value*0.95,'Preparing stitch preview' if value>=1 else message),**self.settings)
+                self.progress.emit(value*0.95,'Preparing stitch preview' if value>=1 else message),
+                cancel_check=self.cancel_event.is_set,**self.settings)
             self.finished.emit(design,metrics)
+        except DigitizeCancelled:
+            self.cancelled.emit()
         except Exception as error:
             self.failed.emit(str(error))
         finally:
@@ -54,6 +60,7 @@ class MainWindow(LayerWorkflow,QMainWindow):
         self.project_dirty=False
         self._progress_started_at=None
         self._progress_elapsed=0.0
+        self.cancel_event=Event()
         self._last_fraction=0.0
         self._last_stage='Preparing artwork'
         self.progress_timer=QTimer(self)
@@ -170,6 +177,9 @@ class MainWindow(LayerWorkflow,QMainWindow):
         self.generate_button.setStyleSheet("background:#176e69;color:white;font-weight:600;padding:10px;")
         self.export_button=self.button(side,"Export DST",self.export)
         self.export_button.setEnabled(False)
+        self.cancel_button=self.button(side,"Cancel",self.cancel_generation)
+        self.cancel_button.setVisible(False)
+        self.cancel_button.setStyleSheet("color:#9b3f30;")
         self.progress_bar=QProgressBar()
         self.progress_bar.setRange(0,100)
         self.progress_bar.setValue(0)
@@ -298,11 +308,15 @@ class MainWindow(LayerWorkflow,QMainWindow):
             for widget,enabled in self._enabled_controls:
                 widget.setEnabled(False)
             self.canvas.setEnabled(False)
+            self.cancel_button.setEnabled(True)
+            self.cancel_button.setVisible(True)
         else:
             self.progress_timer.stop()
             for widget,enabled in getattr(self,'_enabled_controls',[]):
                 widget.setEnabled(enabled)
             self.canvas.setEnabled(True)
+            self.cancel_button.setEnabled(False)
+            self.cancel_button.setVisible(False)
             self.export_button.setEnabled(self.design is not None and not self.dirty and not validate(self.design)[0])
             if self.document is not None:
                 self.layer_panel.show_settings(self.document,self.active_layer)
@@ -324,11 +338,13 @@ class MainWindow(LayerWorkflow,QMainWindow):
         settings=self.settings()
         if self.document is not None:
             settings['layer_document']=self.document.copy()
-        self.worker=Digitizer(self.canvas.image.copy(),mask.copy(),settings)
+        self.cancel_event=Event()
+        self.worker=Digitizer(self.canvas.image.copy(),mask.copy(),settings,self.cancel_event)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.finished.connect(self.accept_design)
         self.worker.progress.connect(self.generation_progress)
+        self.worker.cancelled.connect(self.generation_cancelled)
         self.worker.failed.connect(self.generation_failed)
         self.worker.done.connect(self.thread.quit)
         self.worker.done.connect(self.worker.deleteLater)
@@ -349,6 +365,19 @@ class MainWindow(LayerWorkflow,QMainWindow):
             self._progress_elapsed=monotonic()-self._progress_started_at
             self.estimate_label.setText(f"Failed after {self.format_duration(self._progress_elapsed)}")
         QMessageBox.critical(self,"Digitizing failed",message)
+
+    def cancel_generation(self):
+        if self.thread is None:
+            return
+        self.cancel_event.set()
+        self.cancel_button.setEnabled(False)
+        self.estimate_label.setText('Cancelling after the current fill row…')
+
+    @Slot()
+    def generation_cancelled(self):
+        self.progress_timer.stop()
+        self.statusBar().showMessage('Digitizing cancelled; the previous preview is unchanged.')
+        self.estimate_label.setText(f"Cancelled after {self.format_duration(self._progress_elapsed)}")
 
     @staticmethod
     def format_duration(seconds):

@@ -33,7 +33,7 @@ On this configured Mac, double-click `Launch.command`, or run `.venv/bin/python 
 3. Set output size (selection aspect ratio is maintained by default), maximum colors, row spacing, direction, maximum stitch length, and minimum region area. Smaller row spacing means denser stitching.
 4. Choose Auto, Outline, or Fill and click Auto Digitize. Generation runs in a worker while the UI remains responsive. The progress bar reports the current stage, percentage, elapsed time, and an ETA based on completed region work. The estimate becomes more stable after the first planning stage.
 5. Inspect stitches, dashed jumps, polygon boundaries, object order and statistics. Adjust and regenerate as needed.
-6. Export DST. Review any displayed warnings. The app reads the temporary DST back and verifies it before saving the destination.
+6. Export DST. Review any displayed warnings. The app reads the temporary DST back and verifies it before saving the destination. During separation or digitizing, the Cancel button stops after the current GrabCut pass or fill row and keeps the previous preview.
 
 ## Separate shaded artwork into editable parts
 
@@ -57,8 +57,8 @@ For development, `requirements-lock.txt` records the exact dependency versions t
 
 ## Verification and examples
 
-- 44 public automated tests cover DST round trips, geometric containment, planner rules, satin rails, optimizer travel, segmentation, editable layer persistence, selection tools, and the desktop selection-to-export workflow.
-- An additional private-image acceptance test runs when `STITCHFORGE_MONKEY_IMAGE` points to the user's original monkey image. It verifies removed background, separate dark eye/mouth regions and nearby dark needle points in the exported DST; the full local run passes 45 tests.
+- 45 public automated tests cover DST round trips, geometric containment, planner rules, satin rails, optimizer travel, segmentation, editable layer persistence, fill-row progress/cancellation, selection tools, and the desktop selection-to-export workflow.
+- An additional private-image acceptance test runs when `STITCHFORGE_MONKEY_IMAGE` points to the user's original monkey image. It verifies removed background, separate dark eye/mouth regions and nearby dark needle points in the exported DST; the full local run passes 46 tests.
 - Auto Digitize progress reports are covered by engine and desktop tests; the UI keeps the final elapsed time visible after completion.
 - `examples/` contains square, circle and multiple-color proof DSTs.
 - `examples/logos/` contains ten source images, selection masks, DST files, actual readback previews and `verification.json`. Regenerate with `.venv/bin/python scripts/build_examples.py`.

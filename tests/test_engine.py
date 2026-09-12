@@ -5,6 +5,7 @@ from PIL import Image,ImageDraw
 from shapely.geometry import Polygon,box,LineString
 from embroidery_app.image_processing.vectorization import vectorize
 from embroidery_app.embroidery.generators.tatami import tatami
+from embroidery_app.embroidery.exceptions import DigitizeCancelled
 from embroidery_app.embroidery.generators.satin import satin
 from embroidery_app.embroidery.models import Command,StitchType,EmbroideryObject,Stitch
 from embroidery_app.embroidery.planner import plan
@@ -103,3 +104,17 @@ def test_digitize_reports_monotonic_progress():
     assert updates[-1] == (1.0,"Digitizing complete")
     assert all(a[0] <= b[0] for a,b in zip(updates,updates[1:]))
     assert any("Generating stitches" in message for _,message in updates)
+
+
+def test_fill_reports_rows_and_can_cancel():
+    updates=[]
+    path=tatami(box(0,0,30,30),0.4,3,25,
+                progress=lambda fraction,message:updates.append((fraction,message)))
+    assert path and len(updates)>10
+    assert updates[-1][0]==pytest.approx(1)
+    assert updates[-1][1].startswith('fill row')
+    cancelled=[]
+    with pytest.raises(DigitizeCancelled):
+        tatami(box(0,0,30,30),0.4,3,25,
+               progress=lambda fraction,message:cancelled.append(fraction),
+               cancel_check=lambda:len(cancelled)>=3)

@@ -5,11 +5,11 @@ from embroidery_app.embroidery.models import Stitch,Command
 from embroidery_app.embroidery.generators.tatami import scan_rows
 
 
-def satin(polygon,spacing=0.4,max_length=6,angle=0):
+def satin(polygon,spacing=0.4,max_length=6,angle=0,progress=None,cancel_check=None):
     if polygon.interiors:
         raise ValueError("Satin columns cannot contain holes")
     rails=[]
-    for row in scan_rows(polygon,spacing,angle):
+    for row in scan_rows(polygon,spacing,angle,progress,cancel_check):
         if len(row)!=1:
             raise ValueError("Satin requires a single continuous column")
         ends=list(row[0].coords)

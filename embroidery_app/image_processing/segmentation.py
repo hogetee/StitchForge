@@ -2,6 +2,7 @@
 import cv2
 import numpy as np
 from .layers import ArtworkLayer, LayerDocument
+from embroidery_app.embroidery.exceptions import DigitizeCancelled
 
 
 def _emit(progress, value, message):
@@ -9,7 +10,13 @@ def _emit(progress, value, message):
         progress(value, message)
 
 
-def extract_foreground(image, selection=None, alpha=None, progress=None):
+def _check(cancel_check):
+    if cancel_check is not None and cancel_check():
+        raise DigitizeCancelled()
+
+
+def extract_foreground(image, selection=None, alpha=None, progress=None, cancel_check=None):
+    _check(cancel_check)
     h, w = image.shape[:2]
     allowed = np.ones((h, w), np.uint8) * 255 if selection is None else selection.copy()
     if alpha is not None:
@@ -51,6 +58,7 @@ def extract_foreground(image, selection=None, alpha=None, progress=None):
     cv2.setRNGSeed(0)
     bg, fg = np.zeros((1,65), np.float64), np.zeros((1,65), np.float64)
     for i in range(3):
+        _check(cancel_check)
         _emit(progress, 0.05+0.09*i, f"Separating background · pass {i+1}/3")
         cv2.grabCut(smooth, gc, None, bg, fg, 1, cv2.GC_INIT_WITH_MASK if i == 0 else cv2.GC_EVAL)
     found = ((gc == cv2.GC_FGD) | (gc == cv2.GC_PR_FGD)).astype(np.uint8)*255
@@ -92,12 +100,14 @@ def _cluster(samples, count, preserve_dark):
 
 
 def separate_layers(image, selection=None, alpha=None, colors=4, remove_background=True,
-                    smoothing=11, min_pixels=100, preserve_dark=True, progress=None):
+                    smoothing=11, min_pixels=100, preserve_dark=True, progress=None,
+                    cancel_check=None):
     if image.ndim != 3 or image.shape[2] != 3 or image.dtype != np.uint8:
         raise ValueError("Segmentation needs an RGB image")
     if not 1 <= colors <= 5:
         raise ValueError("Choose 1–5 thread colors")
-    foreground = (extract_foreground(image, selection, alpha, progress) if remove_background
+    _check(cancel_check)
+    foreground = (extract_foreground(image, selection, alpha, progress, cancel_check) if remove_background
                   else np.full(image.shape[:2],255,np.uint8) if selection is None else selection.copy())
     if alpha is not None:
         foreground[alpha == 0] = 0
@@ -113,6 +123,7 @@ def separate_layers(image, selection=None, alpha=None, colors=4, remove_backgrou
     # Chunk assignment bounds memory even on the 1600 px canvas.
     assigned = np.empty(len(samples), np.int16)
     for offset in range(0, len(samples), 50000):
+        _check(cancel_check)
         chunk = samples[offset:offset+50000]
         assigned[offset:offset+len(chunk)] = np.argmin(np.sum((chunk[:,None,:]-centers[None,:,:])**2, axis=2), axis=1)
     labels[foreground > 0] = assigned
@@ -123,6 +134,7 @@ def separate_layers(image, selection=None, alpha=None, colors=4, remove_backgrou
     retained = np.zeros_like(foreground, bool)
     dark_index = int(np.argmin(centers[:,0]))
     for i in range(colors):
+        _check(cancel_check)
         count, components, stats, _ = cv2.connectedComponentsWithStats((labels == i).astype(np.uint8), 8)
         threshold = max(3, min_pixels//3) if preserve_dark and i == dark_index else min_pixels
         good = np.flatnonzero(stats[:,cv2.CC_STAT_AREA] >= threshold)

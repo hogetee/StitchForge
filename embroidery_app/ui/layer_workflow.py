@@ -1,5 +1,6 @@
 """Main-window layer actions and background segmentation worker."""
 from time import monotonic
+from threading import Event
 from pathlib import Path
 import numpy as np
 from PySide6.QtCore import QObject, Signal, Slot, QThread
@@ -9,24 +10,29 @@ from PySide6.QtGui import QColor
 from embroidery_app.image_processing.layers import ArtworkLayer,LayerDocument
 from embroidery_app.image_processing.segmentation import separate_layers
 from embroidery_app.project import save_project,load_project
+from embroidery_app.embroidery.exceptions import DigitizeCancelled
 
 
 class Separator(QObject):
     finished=Signal(object)
     failed=Signal(str)
     progress=Signal(float,str)
+    cancelled=Signal()
     done=Signal()
 
-    def __init__(self,image,mask,alpha,settings):
+    def __init__(self,image,mask,alpha,settings,cancel_event):
         super().__init__()
-        self.image,self.mask,self.alpha,self.settings=image,mask,alpha,settings
+        self.image,self.mask,self.alpha,self.settings,self.cancel_event=image,mask,alpha,settings,cancel_event
 
     @Slot()
     def run(self):
         try:
             result=separate_layers(self.image,self.mask,self.alpha,progress=lambda value,message:
-                self.progress.emit(value*0.95,'Loading editable layers' if value>=1 else message),**self.settings)
+                self.progress.emit(value*0.95,'Loading editable layers' if value>=1 else message),
+                cancel_check=self.cancel_event.is_set,**self.settings)
             self.finished.emit(result)
+        except DigitizeCancelled:
+            self.cancelled.emit()
         except Exception as error:
             self.failed.emit(str(error))
         finally:
@@ -84,13 +90,15 @@ class LayerWorkflow:
         self._progress_started_at=monotonic()
         self.progress_bar.setValue(0)
         self.estimate_label.setText('Separating artwork · estimating time…')
+        self.cancel_event=Event()
         self.thread=QThread(self)
         self.worker=Separator(self.canvas.image.copy(),mask,self.canvas.alpha.copy(),dict(
             colors=self.colors.value(),remove_background=self.remove_bg.isChecked(),
-            smoothing=self.smoothing.value(),min_pixels=self.min_part.value(),preserve_dark=self.keep_dark.isChecked()))
+            smoothing=self.smoothing.value(),min_pixels=self.min_part.value(),preserve_dark=self.keep_dark.isChecked()),self.cancel_event)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.progress.connect(self.generation_progress)
+        self.worker.cancelled.connect(self.generation_cancelled)
         self.worker.finished.connect(self.accept_layers)
         self.worker.failed.connect(self.generation_failed)
         self.worker.done.connect(self.thread.quit)
