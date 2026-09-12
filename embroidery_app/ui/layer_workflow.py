@@ -75,6 +75,7 @@ class LayerWorkflow:
 
     def reset_layers(self):
         self.document=None; self.active_layer=-1
+        self.view_only_index=None
         self.undo_layers=[]; self.redo_layers=[]
         self.project_dirty=False
         self.layer_panel.refresh(LayerDocument(np.zeros((1,1),np.uint8)))
@@ -113,6 +114,7 @@ class LayerWorkflow:
         self.document=document
         self.project_dirty=True
         self.active_layer=-1
+        self.view_only_index=None
         self.show_flat.setChecked(True)
         self.refresh_layers()
         self.select_foreground()
@@ -130,7 +132,9 @@ class LayerWorkflow:
     def render_layers(self,*args):
         if self.canvas.image is None:
             return
-        flat=(self.document.render(self.canvas.image)
+        only = ({self.view_only_index}
+                if self.view_only_index is not None else None)
+        flat=(self.document.render(self.canvas.image,only=only)
               if self.document is not None and self.show_flat.isChecked() else None)
         self.canvas.display_pixels(flat)
         # Flat colors are useful for judging likeness; do not tint them green.
@@ -138,6 +142,7 @@ class LayerWorkflow:
 
     def select_foreground(self):
         self.active_layer=-1
+        self.view_only_index=None
         if self.document is not None:
             self.canvas.overlay_color=(25,180,170)
             self.canvas.set_mask(self.document.foreground)
@@ -150,6 +155,8 @@ class LayerWorkflow:
         if self.document is None or not 0<=index<len(self.document.layers):
             return
         self.active_layer=index
+        if self.view_only_index is not None:
+            self.view_only_index=index
         layer=self.document.layers[index]
         self.canvas.overlay_color=(60,155,215)
         self.canvas.set_mask(layer.mask)
@@ -205,6 +212,47 @@ class LayerWorkflow:
         if self.document is None:
             return
         index=self.active_layer
+        if action == 'solo':
+            if not 0 <= index < len(self.document.layers):
+                self.statusBar().showMessage('Select a part first, then Show selected')
+                return
+            self.view_only_index=index
+            self.render_layers()
+            self.statusBar().showMessage(f'Showing only {self.document.layers[index].name} · select another row to inspect it')
+            return
+        if action == 'all':
+            self.view_only_index=None
+            self.render_layers()
+            self.statusBar().showMessage('Showing all layer parts')
+            return
+        if action == 'group_colors':
+            if not self.document.layers:
+                return
+            self.checkpoint()
+            grouped={}
+            order=[]
+            for layer in self.document.layers:
+                color=layer.color.lower()
+                if color not in grouped:
+                    grouped[color]=ArtworkLayer(
+                        f'Color {color}', layer.color, np.zeros_like(layer.mask),
+                        enabled=layer.enabled,
+                        mode=layer.mode, angle=layer.angle,
+                        protect_details=layer.protect_details)
+                    order.append(color)
+                grouped[color].mask |= layer.mask
+                grouped[color].protect_details |= layer.protect_details
+                grouped[color].enabled |= layer.enabled
+            self.document.layers=[grouped[color] for color in order]
+            self.active_layer=min(index,len(self.document.layers)-1) if self.document.layers else -1
+            self.view_only_index=None
+            self.project_dirty=True
+            self.refresh_layers()
+            if self.active_layer>=0:
+                self.select_layer(self.active_layer)
+            self.statusBar().showMessage('Parts with the same color were grouped · Undo restores the separate objects')
+            self.invalidate()
+            return
         if action in ('undo','redo'):
             stack=self.undo_layers if action=='undo' else self.redo_layers
             other=self.redo_layers if action=='undo' else self.undo_layers

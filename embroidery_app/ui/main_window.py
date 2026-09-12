@@ -56,6 +56,7 @@ class MainWindow(LayerWorkflow,QMainWindow):
         self.dirty=False
         self.document=None
         self.active_layer=-1
+        self.view_only_index=None
         self.undo_layers=[]; self.redo_layers=[]
         self.project_dirty=False
         self._progress_started_at=None

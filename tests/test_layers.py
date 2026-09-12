@@ -88,6 +88,17 @@ def test_layers_common_coordinates_hidden_and_order(tmp_path):
         digitize(image,doc.foreground,layer_document=doc)
 
 
+def test_layer_render_can_inspect_one_part_even_when_disabled():
+    image,doc=small_document()
+    doc.layers[1].enabled=False
+    all_view=doc.render(image)
+    solo_view=doc.render(image,only={1})
+    assert np.array_equal(all_view[30,20],np.array([170,102,51],np.uint8))
+    assert np.array_equal(all_view[30,90],np.array([245,245,245],np.uint8))
+    assert np.array_equal(solo_view[30,90],np.array([34,17,0],np.uint8))
+    assert np.array_equal(solo_view[30,20],np.array([245,245,245],np.uint8))
+
+
 def test_paint_claims_pixels_and_project_roundtrip(tmp_path):
     image,doc=small_document()
     original=doc.copy()

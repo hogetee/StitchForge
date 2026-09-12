@@ -38,10 +38,18 @@ class LayerDocument:
                 layer.mask[claimed > 0] = 0
         self.foreground |= claimed
 
-    def render(self, image):
+    def render(self, image, only=None):
+        """Render a flat inspection image.
+
+        By default only enabled layers are shown, matching the layers that will
+        be used for digitizing.  ``only`` is an optional set of layer indexes
+        used by the UI's solo-view command; it deliberately ignores the
+        enabled flag so a disabled layer can still be inspected and corrected.
+        """
         result = np.full_like(image, 245)
-        for layer in self.layers:
-            if layer.enabled:
+        for index, layer in enumerate(self.layers):
+            visible = index in only if only is not None else layer.enabled
+            if visible:
                 result[layer.mask > 0] = tuple(bytes.fromhex(layer.color.lstrip("#")))
         return result
 

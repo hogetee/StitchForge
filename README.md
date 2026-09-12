@@ -39,9 +39,9 @@ On this configured Mac, double-click `Launch.command`, or run `.venv/bin/python 
 
 1. In **Select**, open the image and optionally draw a loose rectangle around the object. With no selection, separation uses the full image. Leave some background margin around opaque objects.
 2. Choose 3–5 **Separation colors**, leave **Remove background** and **Preserve dark details** enabled, and click **Separate into layers**. Transparent images use their alpha mask. Turn off background removal to use a carefully drawn foreground mask as-is.
-3. Review the simplified artwork. **Layers** lists connected parts, with dark details kept as distinct parts where possible. The algorithm proposes color/shape regions; it does not automatically know names such as eye, ear, or mouth. Double-click a part's name to rename it.
+3. Review the simplified artwork. **Layers** lists connected parts, with dark details kept as distinct parts where possible. Each row is one proposed object part and its swatch is the proposed thread color; the algorithm does not automatically know names such as eye, ear, or mouth. Double-click a part's name to rename it.
 4. Select a part, then use Brush/Polygon in **Select** to correct its mask. Painting claims pixels from other parts; subtracting leaves empty fabric. **Pick layer** lets you click a part on the canvas. **Edit foreground selection** switches back to the overall object mask. Changing overall selection clips existing parts and creates an Added foreground part for newly included pixels.
-5. Change part color, strategy or direction; toggle its checkbox to include/exclude it from DST. Use Up/Down to set sewing order, Cmd/Ctrl-select parts and Merge to combine them, or New part to paint a separate feature. Undo/Redo applies to layer edits (up to 20 steps, bounded by memory).
+5. Change part color, strategy or direction; toggle its checkbox to include/exclude it from DST. To inspect the masks, select a row and click **Show selected**, then click **Show all** to restore the composite view. **Group by color** combines separate parts with the same color into one color layer; Undo restores the object parts. Use Up/Down to set sewing order, Cmd/Ctrl-select parts and Merge to combine them, or New part to paint a separate feature. Undo/Redo applies to layer edits (up to 20 steps, bounded by memory).
 6. In **Stitches**, set physical size and stitch settings, then **Auto Digitize**. Checked layers share one coordinate system and preserve the chosen layer order. Hidden layers do not change the scale of remaining features. Small protected details use a lower area threshold; omitted layers are listed in the result.
 7. **Save Project** stores the source, masks, colors, names, order and settings in an editable `.stitchforge` file. **Open Project** restores them; regenerate the preview before export. Exact RGB colors live in the project, because DST itself does not store them.
 
@@ -57,8 +57,8 @@ For development, `requirements-lock.txt` records the exact dependency versions t
 
 ## Verification and examples
 
-- 45 public automated tests cover DST round trips, geometric containment, planner rules, satin rails, optimizer travel, segmentation, editable layer persistence, fill-row progress/cancellation, selection tools, and the desktop selection-to-export workflow.
-- An additional private-image acceptance test runs when `STITCHFORGE_MONKEY_IMAGE` points to the user's original monkey image. It verifies removed background, separate dark eye/mouth regions and nearby dark needle points in the exported DST; the full local run passes 46 tests.
+- 46 public automated tests cover DST round trips, geometric containment, planner rules, satin rails, optimizer travel, segmentation, editable layer persistence, fill-row progress/cancellation, selection tools, and the desktop selection-to-export workflow.
+- An additional private-image acceptance test runs when `STITCHFORGE_MONKEY_IMAGE` points to the user's original monkey image. It verifies removed background, separate dark eye/mouth regions and nearby dark needle points in the exported DST; the full local run passes 47 tests.
 - Auto Digitize progress reports are covered by engine and desktop tests; the UI keeps the final elapsed time visible after completion.
 - `examples/` contains square, circle and multiple-color proof DSTs.
 - `examples/logos/` contains ten source images, selection masks, DST files, actual readback previews and `verification.json`. Regenerate with `.venv/bin/python scripts/build_examples.py`.

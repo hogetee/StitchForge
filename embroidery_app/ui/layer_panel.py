@@ -13,18 +13,21 @@ class LayerPanel(QWidget):
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout(self)
-        hint = QLabel("Parts sew from top to bottom. Check to include in DST. Click a part to edit its mask; double-click its name to rename.")
+        hint = QLabel("Each row is an editable object part with a proposed thread color. Check = include in DST; click a row to edit its mask. Use the view buttons to inspect one part or all parts.")
         hint.setWordWrap(True)
         layout.addWidget(hint)
         self.list = QListWidget()
         self.list.setMinimumHeight(150)
         self.list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        layout.addWidget(QLabel('Objects / proposed thread colors'))
         layout.addWidget(self.list, 1)
         self.list.currentRowChanged.connect(self.selected.emit)
         self.list.itemChanged.connect(self.item_changed)
         for row in [[('Up','up'),('Down','down'),('Color','color')],
                     [('New part','new'),('Delete','delete'),('Merge','merge')],
-                    [('Undo','undo'),('Redo','redo')]]:
+                    [('Undo','undo'),('Redo','redo')],
+                    [('Show selected','solo'),('Show all','all')],
+                    [('Group by color','group_colors')]]:
             bar = QHBoxLayout()
             for label, action in row:
                 button = QPushButton(label)
@@ -64,7 +67,7 @@ class LayerPanel(QWidget):
         self.list.setCurrentRow(current)
         self.list.blockSignals(False)
         self.show_settings(document, current)
-        self.count.setText(f"{len(document.layers)} parts · {len({p.color for p in document.layers if p.enabled})} thread colors\nNames describe proposed regions; rename them as needed.")
+        self.count.setText(f"{len(document.layers)} parts · {len({p.color for p in document.layers if p.enabled})} thread colors\nCheckbox controls DST inclusion. Select a row, then Show selected to inspect it.")
         self._refreshing = False
 
     def show_settings(self, document, index):

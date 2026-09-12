@@ -128,6 +128,10 @@ def test_layer_desktop_workflow(tmp_path,monkeypatch):
     eye=next(i for i,p in enumerate(window.document.layers) if p.mask[115,92])
     window.layer_panel.list.setCurrentRow(eye)
     assert np.array_equal(window.canvas.mask,window.document.layers[eye].mask)
+    window.layer_action('solo')
+    assert window.view_only_index==eye
+    window.layer_action('all')
+    assert window.view_only_index is None
     window.layer_panel.list.item(eye).setText('Left eye')
     assert window.document.layers[eye].name=='Left eye'
     size=(window.width.value(),window.height.value())
@@ -156,6 +160,11 @@ def test_layer_desktop_workflow(tmp_path,monkeypatch):
     monkeypatch.setattr(QFileDialog,'getOpenFileName',lambda *a,**k:(str(path),''))
     window.open_layer_project()
     assert not window.project_dirty and not window.export_button.isEnabled()
+    part_count=len(window.document.layers)
+    window.layer_action('group_colors')
+    assert len(window.document.layers)<=part_count
+    window.layer_action('undo')
+    assert len(window.document.layers)==part_count
     window.generate(); wait_for_worker()
     dst=tmp_path/'layer-output.dst'
     monkeypatch.setattr(QFileDialog,'getSaveFileName',lambda *a,**k:(str(dst),''))
