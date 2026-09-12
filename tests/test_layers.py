@@ -58,6 +58,8 @@ def test_shading_merge_groups_materials_without_losing_dark_details():
     assert np.mean(np.logical_or.reduce([part.mask>0 for part in details])[eyes>0])>0.93
     silhouette=separate_layers(image,colors=4,min_pixels=15,single_material=True)
     assert len([part for part in silhouette.layers if not part.protect_details])==1
+    monochrome=separate_layers(image,colors=4,min_pixels=15,single_material=True,preserve_dark=False)
+    assert len(monochrome.layers)==1 and not monochrome.layers[0].protect_details
 
 
 def test_foreground_respects_alpha_and_selection():

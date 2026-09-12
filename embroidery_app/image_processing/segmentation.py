@@ -124,7 +124,7 @@ def separate_layers(image, selection=None, alpha=None, colors=4, remove_backgrou
     # materials.  Keep the old color-band mode available for callers that need
     # it, while the UI can spend one color bin on those lighting variations.
     # Silhouette mode keeps one non-dark material for a single-color patch.
-    cluster_count = 2 if single_material else max(2, colors-1) if merge_shades else colors
+    cluster_count = (2 if preserve_dark else 1) if single_material else (max(2, colors-1) if merge_shades else colors)
     group_materials = bool(merge_shades or single_material)
     centers = _cluster(samples, cluster_count, preserve_dark)
     labels = np.full(foreground.shape, -1, np.int16)
