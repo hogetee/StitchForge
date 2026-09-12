@@ -33,7 +33,7 @@ On this configured Mac, double-click `Launch.command`, or run `.venv/bin/python 
 3. Set output size (selection aspect ratio is maintained by default), maximum colors, row spacing, direction, maximum stitch length, and minimum region area. Smaller row spacing means denser stitching.
 4. Choose Auto, Outline, or Fill and click Auto Digitize. Generation runs in a worker while the UI remains responsive. The progress bar reports the current stage, percentage, elapsed time, and an ETA based on completed region work. The estimate becomes more stable after the first planning stage.
 5. Inspect stitches, dashed jumps, polygon boundaries, object order and statistics. Adjust and regenerate as needed.
-6. Review stitches, then use **Export EMB (editable)** to save a Threadform editable project. Use **Export DST (machine)** when a machine file is needed. The DST export is read back and verified before saving. During separation or digitizing, the Cancel button stops after the current GrabCut pass or fill row and keeps the previous preview.
+6. Export DST. Review any displayed warnings. The app reads the temporary DST back and verifies it before saving the destination. During separation or digitizing, the Cancel button stops after the current GrabCut pass or fill row and keeps the previous preview.
 
 ## Separate shaded artwork into editable parts
 
@@ -43,11 +43,11 @@ On this configured Mac, double-click `Launch.command`, or run `.venv/bin/python 
 4. Select a part, then use Brush/Polygon in **Select** to correct its mask. Painting claims pixels from other parts; subtracting leaves empty fabric. **Pick layer** lets you click a part on the canvas. **Edit foreground selection** switches back to the overall object mask. Changing overall selection clips existing parts and creates an Added foreground part for newly included pixels.
 5. Change part color, strategy or direction; toggle its checkbox to include/exclude it from DST. To inspect the masks, select a row and click **Show selected**, then click **Show all** to restore the composite view. **Group by color** combines separate parts with the same color into one color layer; Undo restores the object parts. Use Up/Down to set sewing order, Cmd/Ctrl-select parts and Merge to combine them, or New part to paint a separate feature. Undo/Redo applies to layer edits (up to 20 steps, bounded by memory).
 6. In **Stitches**, set physical size and stitch settings, then **Auto Digitize**. Checked layers share one coordinate system and preserve the chosen layer order. Hidden layers do not change the scale of remaining features. Small protected details use a lower area threshold; omitted layers are listed in the result.
-7. **Save Project** stores the source, masks, colors, names, order and settings in an editable `.stitchforge` file. **Export EMB (editable)** writes the same Threadform project package with an `.emb` extension; **Open Project** restores either extension. Regenerate the preview before export. Exact RGB colors live in the project, because DST itself does not store them.
+7. **Save Project** stores the source, masks, colors, names, order and settings in an editable `.stitchforge` file. **Open Project** restores them; regenerate the preview before export. Exact RGB colors live in the project, because DST itself does not store them.
 
 Jumps are hidden by default so they do not obscure the face; enable Jumps to inspect travel. Segmentation and digitizing have progress/elapsed/approximate ETA displays. Stage weights estimate remaining work; ETA is not a completion-time guarantee, especially during one expensive region.
 
-Open a saved project with `.venv/bin/python -m embroidery_app.app --project path/to/artwork.stitchforge --digitize` (the same command also accepts a Threadform `.emb` project).
+Open a saved project with `.venv/bin/python -m embroidery_app.app --project path/to/artwork.stitchforge --digitize`.
 
 Run a local image acceptance export with `.venv/bin/python scripts/digitize_layers.py "image.png" output/review`. It writes an editable project, foreground mask, simplified artwork, DST, actual DST readback preview and verification report. `output/` is ignored by Git so private images and derivatives stay local.
 
@@ -57,13 +57,11 @@ For development, `requirements-lock.txt` records the exact dependency versions t
 
 ## Verification and examples
 
-- 47 public automated tests cover DST round trips, geometric containment, planner rules, satin rails, optimizer travel, segmentation, editable layer persistence, EMB project export, fill-row progress/cancellation, selection tools, and the desktop selection-to-export workflow.
-- An additional private-image acceptance test runs when `STITCHFORGE_MONKEY_IMAGE` points to the user's original monkey image. It verifies removed background, separate dark eye/mouth regions and nearby dark needle points in the exported DST; the full local run passes 48 tests.
+- 46 public automated tests cover DST round trips, geometric containment, planner rules, satin rails, optimizer travel, segmentation, editable layer persistence, fill-row progress/cancellation, selection tools, and the desktop selection-to-export workflow.
+- An additional private-image acceptance test runs when `STITCHFORGE_MONKEY_IMAGE` points to the user's original monkey image. It verifies removed background, separate dark eye/mouth regions and nearby dark needle points in the exported DST; the full local run passes 47 tests.
 - Auto Digitize progress reports are covered by engine and desktop tests; the UI keeps the final elapsed time visible after completion.
 - `examples/` contains square, circle and multiple-color proof DSTs.
 - `examples/logos/` contains ten source images, selection masks, DST files, actual readback previews and `verification.json`. Regenerate with `.venv/bin/python scripts/build_examples.py`.
 - `examples/workflow-preview.png` shows the desktop running the two-color selection workflow.
-
-Threadform `.emb` files are editable project packages for this application. Native Wilcom EmbroideryStudio `.emb` output is proprietary and is not generated by the open-source stitch writer used here; use a native Wilcom/Hatch exporter when that external format is required.
 
 See [known limitations](docs/LIMITATIONS.md) before judging sew-out quality. The current implementation has no automatic underlay, tie-offs, or trims; complex satin falls back to fill. It has been digitally verified, not physically sewn.

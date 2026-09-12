@@ -9,10 +9,8 @@ from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QPush
 from PySide6.QtCore import QObject,Signal,Slot,QThread,Qt,QTimer
 from embroidery_app.ui.image_canvas import ImageCanvas
 from embroidery_app.ui.stitch_preview import StitchPreview
-from embroidery_app.image_processing.layers import ArtworkLayer,LayerDocument
 from embroidery_app.examples import proof_design
 from embroidery_app.exporters.dst import export_dst
-from embroidery_app.exporters.emb import export_emb
 from embroidery_app.embroidery.engine import digitize
 from embroidery_app.embroidery.validation import validate
 from embroidery_app.embroidery.models import Command
@@ -178,10 +176,8 @@ class MainWindow(LayerWorkflow,QMainWindow):
         note.setWordWrap(True); settings_layout.addWidget(note); settings_layout.addStretch()
         self.generate_button=self.button(side,"Auto Digitize",self.generate)
         self.generate_button.setStyleSheet("background:#176e69;color:white;font-weight:600;padding:10px;")
-        self.export_button=self.button(side,"Export EMB (editable)",self.export_emb)
+        self.export_button=self.button(side,"Export DST",self.export)
         self.export_button.setEnabled(False)
-        self.dst_export_button=self.button(side,"Export DST (machine)",self.export_dst)
-        self.dst_export_button.setEnabled(False)
         self.cancel_button=self.button(side,"Cancel",self.cancel_generation)
         self.cancel_button.setVisible(False)
         self.cancel_button.setStyleSheet("color:#9b3f30;")
@@ -266,9 +262,8 @@ class MainWindow(LayerWorkflow,QMainWindow):
         self.dirty=True
         if self.document is not None:
             self.project_dirty=True
-        for button in [getattr(self,'export_button',None),getattr(self,'dst_export_button',None)]:
-            if button is not None:
-                button.setEnabled(False)
+        if hasattr(self,"export_button"):
+            self.export_button.setEnabled(False)
         if self.design:
             self.statusBar().showMessage("Selection or settings changed. Auto Digitize to refresh the preview.")
 
@@ -323,9 +318,7 @@ class MainWindow(LayerWorkflow,QMainWindow):
             self.canvas.setEnabled(True)
             self.cancel_button.setEnabled(False)
             self.cancel_button.setVisible(False)
-            exportable=self.design is not None and not self.dirty and not validate(self.design)[0]
-            self.export_button.setEnabled(exportable)
-            self.dst_export_button.setEnabled(exportable)
+            self.export_button.setEnabled(self.design is not None and not self.dirty and not validate(self.design)[0])
             if self.document is not None:
                 self.layer_panel.show_settings(self.document,self.active_layer)
 
@@ -446,46 +439,18 @@ class MainWindow(LayerWorkflow,QMainWindow):
             text+="\n"+"; ".join(errors+warnings)
         self.stats.setText(text)
         self.export_button.setEnabled(not errors)
-        self.dst_export_button.setEnabled(not errors)
         self.statusBar().showMessage("Preview ready · Review stitches and jumps before exporting")
 
-    def _export_warning(self):
+    def export(self):
         if self.design is None or self.dirty:
-            return False
+            return
         errors,warnings=validate(self.design)
         if errors:
-            QMessageBox.critical(self,"Cannot export","\n".join(errors)); return False
+            QMessageBox.critical(self,"Cannot export","\n".join(errors)); return
         if warnings and QMessageBox.warning(self,"Review warnings","\n".join(warnings)+"\n\nExport this design?",
                     QMessageBox.Yes|QMessageBox.No)!=QMessageBox.Yes:
-            return False
-        return True
-
-    def export_emb(self):
-        if not self._export_warning():
             return
-        path,_=QFileDialog.getSaveFileName(self,"Export editable EMB","design.emb","Threadform editable EMB (*.emb)")
-        if path:
-            if not path.lower().endswith(".emb"):
-                path+=".emb"
-            try:
-                document=self.document
-                if document is None or not document.layers:
-                    mask=self.canvas.mask.copy()
-                    color=self.design.thread_colors[0] if self.design.thread_colors else '#000000'
-                    document=LayerDocument(mask.copy(),[ArtworkLayer('Design',color,mask)])
-                settings=self.settings() | {'maintain_aspect':self.aspect.isChecked()}
-                report=export_emb(self.canvas.image,self.canvas.alpha,document,settings,path)
-                QMessageBox.information(self,"EMB project saved",
-                    f"Saved editable EMB project with {report['parts']} parts and {report['colors']} colors.\n"
-                    "Open it with Open Project to continue editing.\n"
-                    "Use Export DST (machine) when you need a machine file.")
-            except Exception as error:
-                QMessageBox.critical(self,"Export failed",str(error))
-
-    def export_dst(self):
-        if not self._export_warning():
-            return
-        path,_=QFileDialog.getSaveFileName(self,"Export machine DST","design.dst","DST (*.dst)")
+        path,_=QFileDialog.getSaveFileName(self,"Export DST","design.dst","DST (*.dst)")
         if path:
             if not path.lower().endswith(".dst"):
                 path+=".dst"
@@ -494,10 +459,6 @@ class MainWindow(LayerWorkflow,QMainWindow):
                 QMessageBox.information(self,"DST verified",f"Saved {report['stitches']:,} stitches. Readback passed.\nThread order: "+", ".join(self.design.thread_colors))
             except Exception as error:
                 QMessageBox.critical(self,"Export failed",str(error))
-
-    # Backwards-compatible callback name for integrations using the old UI.
-    def export(self):
-        self.export_emb()
 
     def closeEvent(self,event):
         if self.thread is not None:

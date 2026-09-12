@@ -78,16 +78,12 @@ def test_full_desktop_workflow(tmp_path,monkeypatch):
     assert window.progress_bar.value()==100
     assert "complete" in window.estimate_label.text().lower()
     assert len(window.design.thread_colors)==2
-    output=tmp_path/"desktop.emb"
+    output=tmp_path/"desktop.dst"
     monkeypatch.setattr(QFileDialog,"getSaveFileName",lambda *a,**k:(str(output),""))
     monkeypatch.setattr(QMessageBox,"information",lambda *a,**k:QMessageBox.Ok)
     monkeypatch.setattr(QMessageBox,"warning",lambda *a,**k:QMessageBox.Yes)
     window.export_button.click()
     assert output.exists()
-    machine=tmp_path/"desktop.dst"
-    monkeypatch.setattr(QFileDialog,"getSaveFileName",lambda *a,**k:(str(machine),""))
-    window.dst_export_button.click()
-    assert machine.exists()
     window.preview.layers["polygons"]=True
     window.preview.layers["order"]=True
     window.preview.display(window.design)
@@ -170,9 +166,9 @@ def test_layer_desktop_workflow(tmp_path,monkeypatch):
     window.layer_action('undo')
     assert len(window.document.layers)==part_count
     window.generate(); wait_for_worker()
-    emb=tmp_path/'layer-output.emb'
-    monkeypatch.setattr(QFileDialog,'getSaveFileName',lambda *a,**k:(str(emb),''))
+    dst=tmp_path/'layer-output.dst'
+    monkeypatch.setattr(QFileDialog,'getSaveFileName',lambda *a,**k:(str(dst),''))
     window.export_button.click()
-    assert emb.exists()
+    assert dst.exists()
     window.project_dirty=False
     window.close()

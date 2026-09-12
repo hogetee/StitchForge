@@ -328,7 +328,7 @@ class LayerWorkflow:
             QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes
 
     def open_layer_project(self):
-        path,_=QFileDialog.getOpenFileName(self,'Open editable project','','Editable project (*.stitchforge *.emb)')
+        path,_=QFileDialog.getOpenFileName(self,'Open editable project','','StitchForge (*.stitchforge)')
         if not path or not self.confirm_replace_project():
             return
         try:
