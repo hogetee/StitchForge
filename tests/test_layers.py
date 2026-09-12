@@ -47,6 +47,19 @@ def test_foreground_and_small_details_preserved():
     assert np.array_equal(document.render(image),second.render(image))
 
 
+def test_shading_merge_groups_materials_without_losing_dark_details():
+    image,truth,eyes,mouth=character_fixture()
+    merged=separate_layers(image,colors=4,min_pixels=15,merge_shades=True)
+    material=[part for part in merged.layers if not part.protect_details]
+    details=[part for part in merged.layers if part.protect_details]
+    assert len(material)==2
+    assert len({part.color for part in material})==2
+    assert len(details)>=3
+    assert np.mean(np.logical_or.reduce([part.mask>0 for part in details])[eyes>0])>0.93
+    silhouette=separate_layers(image,colors=4,min_pixels=15,single_material=True)
+    assert len([part for part in silhouette.layers if not part.protect_details])==1
+
+
 def test_foreground_respects_alpha_and_selection():
     image,fg,_,_=character_fixture()
     selection=np.zeros_like(fg); selection[:,:130]=255

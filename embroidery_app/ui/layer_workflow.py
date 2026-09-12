@@ -45,9 +45,14 @@ class LayerWorkflow:
         form=QFormLayout(group)
         self.remove_bg=QCheckBox('Remove background'); self.remove_bg.setChecked(True)
         self.keep_dark=QCheckBox('Preserve dark details'); self.keep_dark.setChecked(True)
+        self.merge_shades=QCheckBox('Merge lighting / shadow shades'); self.merge_shades.setChecked(True)
+        self.merge_shades.setToolTip('Treat light and shadow on one material as one editable layer.')
+        self.single_material=QCheckBox('One material silhouette')
+        self.single_material.setToolTip('Use one non-dark foreground layer and keep dark details separate.')
         self.smoothing=QSpinBox(); self.smoothing.setRange(3,25); self.smoothing.setValue(11)
         self.min_part=QSpinBox(); self.min_part.setRange(3,5000); self.min_part.setValue(100)
         form.addRow(self.remove_bg); form.addRow(self.keep_dark)
+        form.addRow(self.merge_shades); form.addRow(self.single_material)
         form.addRow('Texture smoothing',self.smoothing)
         form.addRow('Min part (pixels)',self.min_part)
         button=QPushButton('Separate into layers'); button.clicked.connect(self.separate)
@@ -95,7 +100,9 @@ class LayerWorkflow:
         self.thread=QThread(self)
         self.worker=Separator(self.canvas.image.copy(),mask,self.canvas.alpha.copy(),dict(
             colors=self.colors.value(),remove_background=self.remove_bg.isChecked(),
-            smoothing=self.smoothing.value(),min_pixels=self.min_part.value(),preserve_dark=self.keep_dark.isChecked()),self.cancel_event)
+            smoothing=self.smoothing.value(),min_pixels=self.min_part.value(),
+            preserve_dark=self.keep_dark.isChecked(),merge_shades=self.merge_shades.isChecked(),
+            single_material=self.single_material.isChecked()),self.cancel_event)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         # The separator runs off the GUI thread.  Keep every slot that touches

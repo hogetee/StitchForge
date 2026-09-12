@@ -122,7 +122,9 @@ def test_layer_desktop_workflow(tmp_path,monkeypatch):
 
     window.separate(); wait_for_worker()
     assert window.document is not None
-    assert len(window.document.layers)>=5
+    # Lighting bands are merged by the default separation workflow, while
+    # dark details remain separate editable parts.
+    assert len(window.document.layers)>=4
     assert not window.document.foreground[0,0]
     assert not window.export_button.isEnabled()
     eye=next(i for i,p in enumerate(window.document.layers) if p.mask[115,92])

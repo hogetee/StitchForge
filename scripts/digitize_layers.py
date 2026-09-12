@@ -24,6 +24,10 @@ def main():
     parser.add_argument('image',type=Path)
     parser.add_argument('output',type=Path)
     parser.add_argument('--colors',type=int,default=4)
+    parser.add_argument('--keep-lighting-bands',action='store_true',
+                        help='keep photographic highlights/shadows as separate color bands')
+    parser.add_argument('--single-material',action='store_true',
+                        help='collapse non-dark foreground into one editable material layer')
     parser.add_argument('--width',type=float,default=80)
     parser.add_argument('--fabric',default=None,help='Fabric profile name, e.g. Woven / Cotton; omitted preserves legacy generation')
     args=parser.parse_args()
@@ -32,7 +36,9 @@ def main():
         source.thumbnail((1600,1600))
         rgba=np.array(source)
     image=rgba[:,:,:3].copy()
-    document=separate_layers(image,alpha=rgba[:,:,3],colors=args.colors)
+    document=separate_layers(image,alpha=rgba[:,:,3],colors=args.colors,
+                             merge_shades=not args.keep_lighting_bands,
+                             single_material=args.single_material)
     ys,xs=np.nonzero(document.foreground)
     height=round(args.width*(ys.max()-ys.min()+1)/(xs.max()-xs.min()+1),2)
     settings=dict(width=args.width,height=height,colors=args.colors,length=4,spacing=0.4,angle=25,fabric=args.fabric)

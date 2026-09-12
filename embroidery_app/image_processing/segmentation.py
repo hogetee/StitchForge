@@ -100,12 +100,14 @@ def _cluster(samples, count, preserve_dark):
 
 
 def separate_layers(image, selection=None, alpha=None, colors=4, remove_background=True,
-                    smoothing=11, min_pixels=100, preserve_dark=True, progress=None,
-                    cancel_check=None):
+                    smoothing=11, min_pixels=100, preserve_dark=True, merge_shades=False,
+                    single_material=False, progress=None, cancel_check=None):
     if image.ndim != 3 or image.shape[2] != 3 or image.dtype != np.uint8:
         raise ValueError("Segmentation needs an RGB image")
     if not 1 <= colors <= 5:
         raise ValueError("Choose 1–5 thread colors")
+    if not isinstance(merge_shades, (bool, np.bool_)) or not isinstance(single_material, (bool, np.bool_)):
+        raise ValueError("Shading and material options must be boolean")
     _check(cancel_check)
     foreground = (extract_foreground(image, selection, alpha, progress, cancel_check) if remove_background
                   else np.full(image.shape[:2],255,np.uint8) if selection is None else selection.copy())
@@ -118,7 +120,13 @@ def separate_layers(image, selection=None, alpha=None, colors=4, remove_backgrou
     lab = cv2.cvtColor(smooth, cv2.COLOR_RGB2LAB)
     samples = lab[foreground > 0].astype(np.float32)
     _emit(progress, 0.45, "Finding object colors and dark details")
-    centers = _cluster(samples, colors, preserve_dark)
+    # Photographs contain illumination bands that are not separate embroidery
+    # materials.  Keep the old color-band mode available for callers that need
+    # it, while the UI can spend one color bin on those lighting variations.
+    # Silhouette mode keeps one non-dark material for a single-color patch.
+    cluster_count = 2 if single_material else max(2, colors-1) if merge_shades else colors
+    group_materials = bool(merge_shades or single_material)
+    centers = _cluster(samples, cluster_count, preserve_dark)
     labels = np.full(foreground.shape, -1, np.int16)
     # Chunk assignment bounds memory even on the 1600 px canvas.
     assigned = np.empty(len(samples), np.int16)
@@ -133,7 +141,7 @@ def separate_layers(image, selection=None, alpha=None, colors=4, remove_backgrou
     # Remove tiny islands by assigning them to the nearest retained region.
     retained = np.zeros_like(foreground, bool)
     dark_index = int(np.argmin(centers[:,0]))
-    for i in range(colors):
+    for i in range(cluster_count):
         _check(cancel_check)
         count, components, stats, _ = cv2.connectedComponentsWithStats((labels == i).astype(np.uint8), 8)
         threshold = max(3, min_pixels//3) if preserve_dark and i == dark_index else min_pixels
@@ -149,14 +157,21 @@ def separate_layers(image, selection=None, alpha=None, colors=4, remove_backgrou
     _emit(progress, 0.70, "Building editable connected parts")
     rgb = cv2.cvtColor(np.clip(centers,0,255).astype(np.uint8)[None,:,:], cv2.COLOR_LAB2RGB)[0]
     layers = []
-    for i in range(colors):
+    material_number = 1
+    for i in range(cluster_count):
         count, components, stats, _ = cv2.connectedComponentsWithStats((labels == i).astype(np.uint8), 8)
         indices = sorted(range(1,count), key=lambda j:-stats[j,cv2.CC_STAT_AREA])
         color = "#"+"".join(f"{int(c):02x}" for c in rgb[i])
+        detail = preserve_dark and i == dark_index
+        if group_materials and not detail:
+            mask=(labels == i).astype(np.uint8)*255
+            if np.count_nonzero(mask) >= min_pixels:
+                layers.append(ArtworkLayer(f"Material {material_number}", color, mask))
+                material_number += 1
+            continue
         for j in indices:
             if len(layers) >= 128:
                 raise ValueError("More than 128 parts: increase smoothing or the minimum part size")
-            detail = preserve_dark and i == dark_index
             layers.append(ArtworkLayer(f"{'Dark detail' if detail else 'Color '+str(i+1)} · part {indices.index(j)+1}",
                                        color, (components == j).astype(np.uint8)*255, protect_details=detail))
     # Sew broader regions before small features, keeping dark detail parts on top.
