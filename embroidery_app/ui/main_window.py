@@ -247,6 +247,17 @@ class MainWindow(LayerWorkflow,QMainWindow):
         layout.addWidget(self.stats)
         self.statusBar().showMessage("Local processing · CPU only · No image upload")
 
+    @Slot(object)
+    def accept_layers(self, document):
+        """Receive segmentation results as a registered MainWindow Qt slot.
+
+        LayerWorkflow is a mixin rather than a QObject subclass.  Registering
+        this forwarding slot on the actual QMainWindow is important: Qt then
+        queues the result onto the GUI thread before it touches the source
+        canvas and layer widgets.
+        """
+        LayerWorkflow.accept_layers(self, document)
+
     @staticmethod
     def button(layout,label,callback):
         button=QPushButton(label); button.clicked.connect(callback); layout.addWidget(button)
@@ -400,13 +411,15 @@ class MainWindow(LayerWorkflow,QMainWindow):
         self.worker=Digitizer(self.canvas.image.copy(),mask.copy(),settings,self.cancel_event)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
-        self.worker.finished.connect(self.accept_design)
-        self.worker.progress.connect(self.generation_progress)
-        self.worker.cancelled.connect(self.generation_cancelled)
-        self.worker.failed.connect(self.generation_failed)
+        # Digitizing is performed in a worker thread; all preview/UI mutations
+        # must be delivered to the GUI thread.
+        self.worker.finished.connect(self.accept_design, Qt.QueuedConnection)
+        self.worker.progress.connect(self.generation_progress, Qt.QueuedConnection)
+        self.worker.cancelled.connect(self.generation_cancelled, Qt.QueuedConnection)
+        self.worker.failed.connect(self.generation_failed, Qt.QueuedConnection)
         self.worker.done.connect(self.thread.quit)
         self.worker.done.connect(self.worker.deleteLater)
-        self.thread.finished.connect(self.worker_finished)
+        self.thread.finished.connect(self.worker_finished, Qt.QueuedConnection)
         self.thread.finished.connect(self.thread.deleteLater)
         self.thread.start()
 

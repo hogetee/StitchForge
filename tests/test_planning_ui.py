@@ -1,8 +1,11 @@
 import os
 os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 from dataclasses import asdict
+from time import monotonic
 import numpy as np
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QImage,QPainter
+from PySide6.QtCore import Qt
 from embroidery_app.ui.main_window import MainWindow
 from embroidery_app.project import save_project
 from embroidery_app.image_processing.layers import ArtworkLayer,LayerDocument
@@ -45,3 +48,33 @@ def test_grouping_preserves_excluded_parts_and_role():
     window.layer_panel.list.setCurrentRow(1); window.show_flat.setChecked(False); window.layer_action('solo')
     assert window.show_flat.isChecked()
     window.project_dirty=False; window.close()
+
+
+def test_separate_keeps_source_canvas_visible(tmp_path):
+    """Segmentation results must repaint the source view on the GUI thread."""
+    app=QApplication.instance() or QApplication([])
+    image=np.zeros((48,48,3),np.uint8)
+    image[:,:24]=(210,120,50)
+    image[:,24:]=(55,145,170)
+    alpha=np.full((48,48),255,np.uint8)
+    window=MainWindow(); window.show()
+    window.canvas.load_array(np.dstack((image,alpha)))
+    window.remove_bg.setChecked(False)
+    window.smoothing.setValue(3)
+    window.min_part.setValue(2)
+    window.canvas.select_all()
+    window.separate()
+    deadline=monotonic()+10
+    while window.thread is not None and monotonic()<deadline:
+        app.processEvents()
+    for _ in range(10):
+        app.processEvents()
+    assert window.document is not None
+    rendered=QImage(48,48,QImage.Format_ARGB32)
+    rendered.fill(Qt.white)
+    painter=QPainter(rendered)
+    window.canvas.scene().render(painter)
+    painter.end()
+    assert rendered.pixelColor(24,24).getRgb() != (255,255,255,255)
+    window.project_dirty=False
+    window.close()

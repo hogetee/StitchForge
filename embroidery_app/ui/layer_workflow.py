@@ -3,7 +3,7 @@ from time import monotonic
 from threading import Event
 from pathlib import Path
 import numpy as np
-from PySide6.QtCore import QObject, Signal, Slot, QThread
+from PySide6.QtCore import QObject, Signal, Slot, QThread, Qt
 from PySide6.QtWidgets import (QGroupBox,QFormLayout,QCheckBox,QSpinBox,QPushButton,
     QColorDialog,QFileDialog,QMessageBox)
 from PySide6.QtGui import QColor
@@ -98,13 +98,16 @@ class LayerWorkflow:
             smoothing=self.smoothing.value(),min_pixels=self.min_part.value(),preserve_dark=self.keep_dark.isChecked()),self.cancel_event)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
-        self.worker.progress.connect(self.generation_progress)
-        self.worker.cancelled.connect(self.generation_cancelled)
-        self.worker.finished.connect(self.accept_layers)
-        self.worker.failed.connect(self.generation_failed)
+        # The separator runs off the GUI thread.  Keep every slot that touches
+        # widgets or the graphics scene on the main thread explicitly; relying
+        # on auto connection is unsafe for Python mixin slots on some Qt builds.
+        self.worker.progress.connect(self.generation_progress, Qt.QueuedConnection)
+        self.worker.cancelled.connect(self.generation_cancelled, Qt.QueuedConnection)
+        self.worker.finished.connect(self.accept_layers, Qt.QueuedConnection)
+        self.worker.failed.connect(self.generation_failed, Qt.QueuedConnection)
         self.worker.done.connect(self.thread.quit)
         self.worker.done.connect(self.worker.deleteLater)
-        self.thread.finished.connect(self.worker_finished)
+        self.thread.finished.connect(self.worker_finished, Qt.QueuedConnection)
         self.thread.finished.connect(self.thread.deleteLater)
         self.thread.start()
 
