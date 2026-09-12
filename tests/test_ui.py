@@ -75,6 +75,8 @@ def test_full_desktop_workflow(tmp_path,monkeypatch):
     assert window.thread is None
     assert window.design is not None
     assert window.export_button.isEnabled()
+    assert window.progress_bar.value()==100
+    assert "complete" in window.estimate_label.text().lower()
     assert len(window.design.thread_colors)==2
     output=tmp_path/"desktop.dst"
     monkeypatch.setattr(QFileDialog,"getSaveFileName",lambda *a,**k:(str(output),""))

@@ -84,9 +84,9 @@ Status vocabulary: NOT STARTED, IN PROGRESS, BLOCKED, DONE. DONE means the accep
 
 ## 10 — Usable V1 — DONE
 - Objective: image → manual selection → settings → automatic digitizing → preview → verified DST.
-- Implementation: connected desktop workflow, worker thread, launcher, ten representative fixture sets and documentation.
+- Implementation: connected desktop workflow, worker thread, live progress/ETA bar, launcher, ten representative fixture sets and documentation.
 - Acceptance: complete workflow exercised through Qt controls and saved DST; all ten source/mask/DST/readback sets generated and visually inspected.
-- Tests: 36 automated tests pass without warnings; native macOS startup passes. `examples/logos/verification.json` records generated output checks.
+- Tests: 37 automated tests pass without warnings; progress callbacks are monotonic and the desktop workflow ends at 100% with elapsed time shown; native macOS startup passes. `examples/logos/verification.json` records generated output checks.
 - Limitations: engineering V1 with limitations in `docs/LIMITATIONS.md`; no physical sew-outs, signed packaging, underlay, tie-off or automatic trims.
 - Next action: sew representative samples on intended fabric/machine, then prioritize underlay, ties, trims and project persistence.
 

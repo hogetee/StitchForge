@@ -1,8 +1,9 @@
 from pathlib import Path
+from time import monotonic
 import numpy as np
 from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QPushButton,
     QLabel,QFileDialog,QMessageBox,QSplitter,QComboBox,QCheckBox,QDoubleSpinBox,
-    QSpinBox,QFormLayout,QGroupBox,QApplication)
+    QSpinBox,QFormLayout,QGroupBox,QApplication,QProgressBar)
 from PySide6.QtCore import QObject,Signal,Slot,QThread,Qt
 from embroidery_app.ui.image_canvas import ImageCanvas
 from embroidery_app.ui.stitch_preview import StitchPreview
@@ -16,6 +17,7 @@ from embroidery_app.embroidery.models import Command
 class Digitizer(QObject):
     finished=Signal(object,object)
     failed=Signal(str)
+    progress=Signal(float,str)
     done=Signal()
 
     def __init__(self,image,mask,settings):
@@ -25,7 +27,7 @@ class Digitizer(QObject):
     @Slot()
     def run(self):
         try:
-            design,metrics=digitize(self.image,self.mask,**self.settings)
+            design,metrics=digitize(self.image,self.mask,progress=self.progress.emit,**self.settings)
             self.finished.emit(design,metrics)
         except Exception as error:
             self.failed.emit(str(error))
@@ -42,6 +44,8 @@ class MainWindow(QMainWindow):
         self.worker=None
         self.design=None
         self.dirty=False
+        self._progress_started_at=None
+        self._progress_elapsed=0.0
         self.setStyleSheet("""
             QMainWindow {background:#f1f3f2;}
             QLabel {color:#263c40;}
@@ -121,6 +125,16 @@ class MainWindow(QMainWindow):
         self.generate_button.setStyleSheet("background:#176e69;color:white;font-weight:600;padding:10px;")
         self.export_button=self.button(side,"Export DST",self.export)
         self.export_button.setEnabled(False)
+        self.progress_bar=QProgressBar()
+        self.progress_bar.setRange(0,100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFormat("%p%")
+        side.addWidget(self.progress_bar)
+        self.estimate_label=QLabel("Ready to digitize")
+        self.estimate_label.setWordWrap(True)
+        self.estimate_label.setStyleSheet("color:#52706d;font-size:11px;padding:2px 0 5px")
+        side.addWidget(self.estimate_label)
         side.addStretch()
         workspace=QVBoxLayout()
         content.addLayout(workspace,1)
@@ -232,11 +246,16 @@ class MainWindow(QMainWindow):
             return
         self.centralWidget().setEnabled(False)
         self.statusBar().showMessage("Generating geometry and stitches…")
+        self._progress_started_at=monotonic()
+        self._progress_elapsed=0.0
+        self.progress_bar.setValue(0)
+        self.estimate_label.setText("Preparing selected artwork · estimating remaining time…")
         self.thread=QThread(self)
         self.worker=Digitizer(self.canvas.image.copy(),self.canvas.mask.copy(),self.settings())
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.finished.connect(self.accept_design)
+        self.worker.progress.connect(self.generation_progress)
         self.worker.failed.connect(self.generation_failed)
         self.worker.done.connect(self.thread.quit)
         self.worker.done.connect(self.worker.deleteLater)
@@ -252,11 +271,48 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def generation_failed(self,message):
         self.statusBar().showMessage("Digitizing failed; adjust the selection or settings.")
+        if self._progress_started_at is not None:
+            self._progress_elapsed=monotonic()-self._progress_started_at
+            self.estimate_label.setText(f"Failed after {self.format_duration(self._progress_elapsed)}")
         QMessageBox.critical(self,"Digitizing failed",message)
+
+    @staticmethod
+    def format_duration(seconds):
+        if seconds < 0.5:
+            return "<1s"
+        if seconds < 60:
+            return f"{seconds:.1f}s"
+        minutes, remainder=divmod(round(seconds),60)
+        return f"{minutes}m {remainder:02d}s"
+
+    @Slot(float,str)
+    def generation_progress(self,fraction,message):
+        fraction=max(0.0,min(1.0,float(fraction)))
+        self.progress_bar.setValue(round(fraction*100))
+        if self._progress_started_at is None:
+            self._progress_started_at=monotonic()
+        elapsed=monotonic()-self._progress_started_at
+        self._progress_elapsed=elapsed
+        if fraction >= 1.0:
+            self.estimate_label.setText(f"{message} · elapsed {self.format_duration(elapsed)}")
+            return
+        if fraction >= 0.05 and elapsed >= 0.1:
+            remaining=max(0.0, elapsed*(1.0-fraction)/fraction)
+            eta=f"~{self.format_duration(remaining)} remaining"
+        else:
+            eta="estimating remaining time…"
+        self.estimate_label.setText(f"{message} · {self.format_duration(elapsed)} elapsed · {eta}")
 
     @Slot(object,object)
     def accept_design(self,design,metrics):
         self.design=design; self.dirty=False
+        if self._progress_started_at is not None and metrics:
+            self._progress_elapsed=monotonic()-self._progress_started_at
+            self.progress_bar.setValue(100)
+            self.estimate_label.setText(f"Digitizing complete · elapsed {self.format_duration(self._progress_elapsed)}")
+        elif not metrics:
+            self.progress_bar.setValue(100)
+            self.estimate_label.setText("Preview loaded · ready to digitize")
         self.preview.display(design)
         errors,warnings=validate(design,12.1 if not metrics else self.length.value())
         counts={c:sum(s.command==c for s in design.stitches) for c in Command}

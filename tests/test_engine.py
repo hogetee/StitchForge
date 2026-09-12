@@ -90,3 +90,16 @@ def test_dense_and_long_validation():
     errors,warnings=validate(design,3)
     assert any("maximum" in e for e in errors)
     assert any("dense" in w for w in warnings)
+
+
+def test_digitize_reports_monotonic_progress():
+    image,mask=fixture(0)
+    updates=[]
+    design,metrics=digitize(image,mask,80,60,colors=2,length=4,
+                            progress=lambda fraction,message:updates.append((fraction,message)))
+    assert design.stitches
+    assert metrics["after"]["jumps"] >= 0
+    assert updates[0][0] > 0
+    assert updates[-1] == (1.0,"Digitizing complete")
+    assert all(a[0] <= b[0] for a,b in zip(updates,updates[1:]))
+    assert any("Generating stitches" in message for _,message in updates)

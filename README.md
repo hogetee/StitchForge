@@ -31,7 +31,7 @@ On this configured Mac, double-click `Launch.command`, or run `.venv/bin/python 
 1. Open a PNG/JPG. Drag a rectangle, paint with Brush, click polygon vertices and right-click to close, or click a connected Color region.
 2. Use Subtract to remove unwanted areas. Clean mask applies a small open/close filter; Save mask writes a debug PNG. Select all includes the background unless it is transparent.
 3. Set output size (selection aspect ratio is maintained by default), maximum colors, row spacing, direction, maximum stitch length, and minimum region area. Smaller row spacing means denser stitching.
-4. Choose Auto, Outline, or Fill and click Auto Digitize. Generation runs in a worker while the UI remains responsive.
+4. Choose Auto, Outline, or Fill and click Auto Digitize. Generation runs in a worker while the UI remains responsive. The progress bar reports the current stage, percentage, elapsed time, and an ETA based on completed region work. The estimate becomes more stable after the first planning stage.
 5. Inspect stitches, dashed jumps, polygon boundaries, object order and statistics. Adjust and regenerate as needed.
 6. Export DST. Review any displayed warnings. The app reads the temporary DST back and verifies it before saving the destination.
 
@@ -40,6 +40,7 @@ For development, `requirements-lock.txt` records the exact dependency versions t
 ## Verification and examples
 
 - 36 automated tests cover DST round trips, geometric containment, planner rules, satin rails, optimizer travel, selection tools, and the complete desktop selection-to-export workflow.
+- Auto Digitize progress reports are covered by engine and desktop tests; the UI keeps the final elapsed time visible after completion.
 - `examples/` contains square, circle and multiple-color proof DSTs.
 - `examples/logos/` contains ten source images, selection masks, DST files, actual readback previews and `verification.json`. Regenerate with `.venv/bin/python scripts/build_examples.py`.
 - `examples/workflow-preview.png` shows the desktop running the two-color selection workflow.
