@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-embroidery"
+version = "0.1.0"
+description = "Local deterministic image-to-embroidery desktop application"
+requires-python = ">=3.12,<3.13"
+dependencies = ["PySide6>=6.7,<7", "numpy>=1.26,<3", "opencv-python-headless>=4.10,<5", "shapely>=2,<3", "Pillow>=10,<13", "pyembroidery>=1.5,<2"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+embroidery-app = "embroidery_app.app:main"
+
+[tool.setuptools.packages.find]
+include = ["embroidery_app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

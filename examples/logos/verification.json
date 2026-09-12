@@ -1,0 +1,383 @@
+[
+  {
+    "name": "Square",
+    "stitches": 4318,
+    "commands": 4327,
+    "warnings": [],
+    "bounds_mm": [
+      0.2,
+      0.2,
+      79.8,
+      79.8
+    ],
+    "metrics": {
+      "before": {
+        "jump_distance_mm": 79.3,
+        "jumps": 1,
+        "color_changes": 0
+      },
+      "after": {
+        "jump_distance_mm": 79.3,
+        "jumps": 1,
+        "color_changes": 0
+      }
+    },
+    "thread_colors": [
+      "#147d92"
+    ],
+    "stitch_types": [
+      "TATAMI"
+    ]
+  },
+  {
+    "name": "Circle",
+    "stitches": 3192,
+    "commands": 3299,
+    "warnings": [
+      "Extremely short stitches"
+    ],
+    "bounds_mm": [
+      0.2,
+      0.2,
+      79.8,
+      75.6
+    ],
+    "metrics": {
+      "before": {
+        "jump_distance_mm": 137.5,
+        "jumps": 103,
+        "color_changes": 0
+      },
+      "after": {
+        "jump_distance_mm": 137.5,
+        "jumps": 103,
+        "color_changes": 0
+      }
+    },
+    "thread_colors": [
+      "#d26643"
+    ],
+    "stitch_types": [
+      "TATAMI"
+    ]
+  },
+  {
+    "name": "Concave L",
+    "stitches": 1870,
+    "commands": 1880,
+    "warnings": [],
+    "bounds_mm": [
+      0.2,
+      0.2,
+      79.8,
+      61.8
+    ],
+    "metrics": {
+      "before": {
+        "jump_distance_mm": 79.77,
+        "jumps": 2,
+        "color_changes": 0
+      },
+      "after": {
+        "jump_distance_mm": 79.77,
+        "jumps": 2,
+        "color_changes": 0
+      }
+    },
+    "thread_colors": [
+      "#32415b"
+    ],
+    "stitch_types": [
+      "TATAMI"
+    ]
+  },
+  {
+    "name": "Ring with hole",
+    "stitches": 2618,
+    "commands": 3132,
+    "warnings": [
+      "Extremely short stitches",
+      "Jump exceeds 30 mm"
+    ],
+    "bounds_mm": [
+      0.2,
+      0.2,
+      79.8,
+      79.8
+    ],
+    "metrics": {
+      "before": {
+        "jump_distance_mm": 3396.71,
+        "jumps": 246,
+        "color_changes": 0
+      },
+      "after": {
+        "jump_distance_mm": 3396.71,
+        "jumps": 246,
+        "color_changes": 0
+      }
+    },
+    "thread_colors": [
+      "#147d92"
+    ],
+    "stitch_types": [
+      "TATAMI"
+    ]
+  },
+  {
+    "name": "Three colors",
+    "stitches": 1869,
+    "commands": 1890,
+    "warnings": [
+      "Jump exceeds 30 mm"
+    ],
+    "bounds_mm": [
+      0.1,
+      0.1,
+      79.9,
+      44.6
+    ],
+    "metrics": {
+      "before": {
+        "jump_distance_mm": 185.48,
+        "jumps": 3,
+        "color_changes": 2
+      },
+      "after": {
+        "jump_distance_mm": 185.48,
+        "jumps": 3,
+        "color_changes": 2
+      }
+    },
+    "thread_colors": [
+      "#c77f28",
+      "#d26643",
+      "#32415b"
+    ],
+    "stitch_types": [
+      "TATAMI",
+      "TATAMI",
+      "TATAMI"
+    ]
+  },
+  {
+    "name": "Narrow column",
+    "stitches": 199,
+    "commands": 208,
+    "warnings": [],
+    "bounds_mm": [
+      0.2,
+      0.4,
+      3.8,
+      79.2
+    ],
+    "metrics": {
+      "before": {
+        "jump_distance_mm": 79.69,
+        "jumps": 1,
+        "color_changes": 0
+      },
+      "after": {
+        "jump_distance_mm": 79.69,
+        "jumps": 1,
+        "color_changes": 0
+      }
+    },
+    "thread_colors": [
+      "#32415b"
+    ],
+    "stitch_types": [
+      "SATIN"
+    ]
+  },
+  {
+    "name": "Triangle",
+    "stitches": 1711,
+    "commands": 1789,
+    "warnings": [],
+    "bounds_mm": [
+      0.2,
+      0.5,
+      79.2,
+      60.0
+    ],
+    "metrics": {
+      "before": {
+        "jump_distance_mm": 87.35,
+        "jumps": 73,
+        "color_changes": 0
+      },
+      "after": {
+        "jump_distance_mm": 87.35,
+        "jumps": 73,
+        "color_changes": 0
+      }
+    },
+    "thread_colors": [
+      "#147d92"
+    ],
+    "stitch_types": [
+      "TATAMI"
+    ]
+  },
+  {
+    "name": "Disconnected circles",
+    "stitches": 766,
+    "commands": 811,
+    "warnings": [
+      "Extremely short stitches",
+      "Jump exceeds 30 mm"
+    ],
+    "bounds_mm": [
+      0.2,
+      0.2,
+      79.8,
+      22.7
+    ],
+    "metrics": {
+      "before": {
+        "jump_distance_mm": 171.44,
+        "jumps": 38,
+        "color_changes": 0
+      },
+      "after": {
+        "jump_distance_mm": 116.26,
+        "jumps": 38,
+        "color_changes": 0
+      }
+    },
+    "thread_colors": [
+      "#d26643"
+    ],
+    "stitch_types": [
+      "TATAMI",
+      "TATAMI",
+      "TATAMI"
+    ]
+  },
+  {
+    "name": "Star",
+    "stitches": 1526,
+    "commands": 1765,
+    "warnings": [
+      "Extremely short stitches",
+      "Jump exceeds 30 mm"
+    ],
+    "bounds_mm": [
+      0.2,
+      0.4,
+      79.7,
+      72.4
+    ],
+    "metrics": {
+      "before": {
+        "jump_distance_mm": 1038.42,
+        "jumps": 176,
+        "color_changes": 0
+      },
+      "after": {
+        "jump_distance_mm": 1038.42,
+        "jumps": 176,
+        "color_changes": 0
+      }
+    },
+    "thread_colors": [
+      "#32415b"
+    ],
+    "stitch_types": [
+      "TATAMI"
+    ]
+  },
+  {
+    "name": "Text",
+    "stitches": 1595,
+    "commands": 1872,
+    "warnings": [
+      "Extremely short stitches",
+      "Jump exceeds 30 mm"
+    ],
+    "bounds_mm": [
+      0.6,
+      0.6,
+      79.4,
+      23.6
+    ],
+    "metrics": {
+      "before": {
+        "jump_distance_mm": 2076.92,
+        "jumps": 249,
+        "color_changes": 2
+      },
+      "after": {
+        "jump_distance_mm": 1538.69,
+        "jumps": 249,
+        "color_changes": 2
+      }
+    },
+    "thread_colors": [
+      "#9fcad2",
+      "#25879a",
+      "#147d92"
+    ],
+    "stitch_types": [
+      "SATIN",
+      "SATIN",
+      "SATIN",
+      "TATAMI",
+      "SATIN",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "SATIN",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "SATIN",
+      "SATIN",
+      "SATIN",
+      "SATIN",
+      "TATAMI",
+      "TATAMI",
+      "SATIN",
+      "SATIN",
+      "TATAMI",
+      "SATIN",
+      "TATAMI",
+      "SATIN",
+      "SATIN",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "SATIN",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "SATIN",
+      "SATIN",
+      "TATAMI",
+      "SATIN",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI",
+      "TATAMI"
+    ]
+  }
+]
