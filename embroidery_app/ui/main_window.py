@@ -1,11 +1,12 @@
 from pathlib import Path
+from dataclasses import asdict,replace
 from threading import Event
 from time import monotonic
 import numpy as np
 from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QPushButton,
     QLabel,QFileDialog,QMessageBox,QSplitter,QComboBox,QCheckBox,QDoubleSpinBox,
     QSpinBox,QFormLayout,QGroupBox,QApplication,QProgressBar,QTabWidget,QScrollArea,
-    QAbstractButton,QAbstractSpinBox,QListWidget)
+    QAbstractButton,QAbstractSpinBox,QListWidget,QSlider)
 from PySide6.QtCore import QObject,Signal,Slot,QThread,Qt,QTimer
 from embroidery_app.ui.image_canvas import ImageCanvas
 from embroidery_app.ui.stitch_preview import StitchPreview
@@ -17,6 +18,7 @@ from embroidery_app.embroidery.models import Command
 from embroidery_app.embroidery.exceptions import DigitizeCancelled
 from embroidery_app.ui.layer_panel import LayerPanel
 from embroidery_app.ui.layer_workflow import LayerWorkflow
+from embroidery_app.embroidery.profiles import PROFILES,get_profile
 
 
 class Digitizer(QObject):
@@ -160,6 +162,26 @@ class MainWindow(LayerWorkflow,QMainWindow):
         self.minimum=self.spin(0.01,50,0.3," mm²",0.1)
         self.mode=QComboBox(); self.mode.addItems(["Auto","Outline","Fill"])
         self.order=QComboBox(); self.order.addItems(["Palette order","Reverse palette"])
+        self.order.setEnabled(False)
+        self.fabric=QComboBox(); self.fabric.addItems([*PROFILES,'Legacy / no planning'])
+        self.compensation=self.spin(0,2,0.2,' mm',0.05)
+        self.underlap=self.spin(0,2,0.2,' mm',0.05)
+        self.underlay_enabled=QCheckBox('Generate underlay'); self.underlay_enabled.setChecked(True)
+        self.underlay_spacing=self.spin(0.15,10,2,' mm',0.1)
+        self.stagger=QSpinBox(); self.stagger.setRange(1,16); self.stagger.setValue(4)
+        self.auto_direction=QCheckBox('Plan direction per object'); self.auto_direction.setChecked(True)
+        form.addRow('Fabric',self.fabric)
+        form.addRow('Pull compensation',self.compensation)
+        form.addRow('Underlap',self.underlap)
+        form.addRow(self.underlay_enabled)
+        form.addRow('Underlay spacing',self.underlay_spacing)
+        form.addRow('Stagger cycle',self.stagger)
+        form.addRow(self.auto_direction)
+        self.fabric.currentTextChanged.connect(self.fabric_changed)
+        for widget in [self.compensation,self.underlap,self.underlay_spacing,self.stagger]:
+            widget.valueChanged.connect(self.invalidate)
+        self.underlay_enabled.toggled.connect(self.invalidate)
+        self.auto_direction.toggled.connect(self.invalidate)
         for name,widget in [("Width",self.width),("Height",self.height),("",self.aspect),
             ("Row spacing",self.spacing),("Max stitch length",self.length),
             ("Fill direction",self.angle),("Minimum region",self.minimum),("Strategy",self.mode),("Thread order",self.order)]:
@@ -172,7 +194,7 @@ class MainWindow(LayerWorkflow,QMainWindow):
         for widget in [self.mode,self.order]:
             widget.currentTextChanged.connect(self.invalidate)
         settings_layout.addWidget(group)
-        note=QLabel('With layers, checked parts sew in list order. Part colors and directions override the global settings.')
+        note=QLabel('Fabric values are starting points for test stitching. Checked layers sew in list order; part directions override automatic direction.')
         note.setWordWrap(True); settings_layout.addWidget(note); settings_layout.addStretch()
         self.generate_button=self.button(side,"Auto Digitize",self.generate)
         self.generate_button.setStyleSheet("background:#176e69;color:white;font-weight:600;padding:10px;")
@@ -209,6 +231,16 @@ class MainWindow(LayerWorkflow,QMainWindow):
             checkbox=QCheckBox(label); checkbox.setChecked(self.preview.layers[key])
             checkbox.toggled.connect(lambda value,k=key:self.layer(k,value))
             layers.addWidget(checkbox)
+        debug=QHBoxLayout(); workspace.addLayout(debug)
+        for key,label in [('underlay','Underlay'),('travel','Travel'),('trims','Trims'),('entries','Entry / exit'),('directions','Directions')]:
+            checkbox=QCheckBox(label); checkbox.setChecked(self.preview.layers[key])
+            checkbox.toggled.connect(lambda value,k=key:self.layer(k,value)); debug.addWidget(checkbox)
+        playback=QHBoxLayout(); workspace.addLayout(playback)
+        self.play_button=self.button(playback,'Play / Pause',self.preview.toggle_play)
+        self.sequence_slider=QSlider(Qt.Horizontal); self.sequence_slider.setRange(0,1000); self.sequence_slider.setValue(1000)
+        self.sequence_slider.valueChanged.connect(self.preview.scrub)
+        self.preview.position_changed.connect(self.update_sequence_position)
+        playback.addWidget(self.sequence_slider)
         self.stats=QLabel("Open a PNG or JPG, then select the artwork to embroider.")
         self.stats.setWordWrap(True)
         self.stats.setStyleSheet("padding:10px;background:#e4ece8;border-radius:6px")
@@ -219,6 +251,11 @@ class MainWindow(LayerWorkflow,QMainWindow):
     def button(layout,label,callback):
         button=QPushButton(label); button.clicked.connect(callback); layout.addWidget(button)
         return button
+
+    def update_sequence_position(self,value):
+        self.sequence_slider.blockSignals(True)
+        self.sequence_slider.setValue(value)
+        self.sequence_slider.blockSignals(False)
 
     @staticmethod
     def spin(low,high,value,suffix,step=1):
@@ -297,7 +334,27 @@ class MainWindow(LayerWorkflow,QMainWindow):
     def settings(self):
         return dict(width=self.width.value(),height=self.height.value(),colors=self.colors.value(),
                     spacing=self.spacing.value(),length=self.length.value(),angle=self.angle.value(),
-                    min_area=self.minimum.value(),mode=self.mode.currentText(),reverse_colors=self.order.currentIndex()==1)
+                    min_area=self.minimum.value(),mode=self.mode.currentText(),reverse_colors=self.order.currentIndex()==1,
+                    fabric=self.fabric_settings(),auto_direction=self.auto_direction.isChecked())
+
+    def fabric_settings(self):
+        if self.fabric.currentText()=='Legacy / no planning': return None
+        profile=get_profile(self.fabric.currentText())
+        return asdict(replace(profile,pull_compensation_mm=self.compensation.value(),
+            underlap_mm=self.underlap.value(),underlay_spacing_mm=self.underlay_spacing.value(),
+            stagger_period=self.stagger.value(),underlay_enabled=self.underlay_enabled.isChecked()))
+
+    def fabric_changed(self,name):
+        if name in PROFILES:
+            profile=PROFILES[name]
+            self.compensation.setValue(profile.pull_compensation_mm)
+            self.underlap.setValue(profile.underlap_mm)
+            self.underlay_spacing.setValue(profile.underlay_spacing_mm)
+            self.stagger.setValue(profile.stagger_period)
+            self.spacing.setValue(profile.suggested_row_spacing_mm)
+            self.length.setValue(profile.suggested_stitch_length_mm)
+        self.order.setEnabled(name=='Legacy / no planning')
+        self.invalidate()
 
     def set_busy(self,busy):
         if busy:
@@ -432,11 +489,16 @@ class MainWindow(LayerWorkflow,QMainWindow):
             text+=f"\nTravel: {metrics['before']['jump_distance_mm']:g} → {metrics['after']['jump_distance_mm']:g} mm · Palette: "+", ".join(design.thread_colors)
             if metrics.get('omitted_layers'):
                 text+='\nFiltered out: '+', '.join(metrics['omitted_layers'])+' (reduce minimum area or enable Keep small details)'
+            if metrics.get('phases'):
+                phases=metrics['phases']
+                text+=f"\nTop: {phases['TOP']:,} · Underlay: {phases['UNDERLAY']:,} · Hidden travel: {metrics['hidden_travel_mm']:g} mm · Trims: {metrics['counts']['TRIM']}"
         kinds={obj.stitch_type.value for obj in design.objects}
         if kinds:
             text+="\nStitch types: "+", ".join(sorted(kinds))
         if errors or warnings:
-            text+="\n"+"; ".join(errors+warnings)
+            messages=errors+warnings
+            text+="\n"+"; ".join(messages[:3])
+            if len(messages)>3: text+=f' · {len(messages)-3} more warnings (review before export)'
         self.stats.setText(text)
         self.export_button.setEnabled(not errors)
         self.statusBar().showMessage("Preview ready · Review stitches and jumps before exporting")
@@ -466,6 +528,7 @@ class MainWindow(LayerWorkflow,QMainWindow):
             event.ignore()
         else:
             if self.confirm_replace_project():
+                self.preview.timer.stop()
                 event.accept()
             else:
                 event.ignore()

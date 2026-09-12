@@ -37,5 +37,5 @@ def plan(regions,spacing=0.4,length=3,angle=0,mode="Auto",rules=PlannerRules()):
               polygon.area/polygon.convex_hull.area>=rules.satin_min_convexity):
             kind=StitchType.SATIN
         objects.append(EmbroideryObject(str(i),polygon,color,kind,spacing,length,
-                                       cross_angle if kind==StitchType.SATIN else angle))
+                                       cross_angle if kind==StitchType.SATIN else angle,auto_stitch=mode=='Auto'))
     return objects

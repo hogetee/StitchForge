@@ -25,6 +25,7 @@ def main():
     parser.add_argument('output',type=Path)
     parser.add_argument('--colors',type=int,default=4)
     parser.add_argument('--width',type=float,default=80)
+    parser.add_argument('--fabric',default=None,help='Fabric profile name, e.g. Woven / Cotton; omitted preserves legacy generation')
     args=parser.parse_args()
     with Image.open(args.image) as source:
         source=ImageOps.exif_transpose(source).convert('RGBA')
@@ -34,7 +35,7 @@ def main():
     document=separate_layers(image,alpha=rgba[:,:,3],colors=args.colors)
     ys,xs=np.nonzero(document.foreground)
     height=round(args.width*(ys.max()-ys.min()+1)/(xs.max()-xs.min()+1),2)
-    settings=dict(width=args.width,height=height,colors=args.colors,length=4,spacing=0.4,angle=25)
+    settings=dict(width=args.width,height=height,colors=args.colors,length=4,spacing=0.4,angle=25,fabric=args.fabric)
     design,metrics=digitize(image,document.foreground,layer_document=document,**settings)
     args.output.mkdir(parents=True,exist_ok=True)
     report=export_dst(design,args.output/'layered.dst')

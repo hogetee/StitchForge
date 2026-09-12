@@ -36,8 +36,12 @@ class LayerPanel(QWidget):
             layout.addLayout(bar)
         form = QFormLayout()
         self.mode = QComboBox(); self.mode.addItems(['Auto','Outline','Fill'])
+        from embroidery_app.embroidery.sequence import ROLES
+        self.role=QComboBox(); self.role.addItems(list(ROLES))
+        form.addRow('Sewing role',self.role)
+        self.role.currentTextChanged.connect(lambda v:self.changed.emit(self.list.currentRow(),'role',v))
         self.angle = QDoubleSpinBox(); self.angle.setRange(-1,179); self.angle.setValue(-1)
-        self.angle.setSpecialValueText('Global direction'); self.angle.setSuffix('°')
+        self.angle.setSpecialValueText('Auto / global'); self.angle.setSuffix('°')
         self.details = QCheckBox('Keep small details')
         form.addRow('Part strategy', self.mode)
         form.addRow('Part direction', self.angle)
@@ -72,14 +76,15 @@ class LayerPanel(QWidget):
 
     def show_settings(self, document, index):
         valid = 0 <= index < len(document.layers)
-        for widget in [self.mode,self.angle,self.details]:
+        for widget in [self.mode,self.angle,self.details,self.role]:
             widget.blockSignals(True); widget.setEnabled(valid)
         if valid:
             layer = document.layers[index]
             self.mode.setCurrentText(layer.mode)
             self.angle.setValue(-1 if layer.angle is None else layer.angle)
             self.details.setChecked(layer.protect_details)
-        for widget in [self.mode,self.angle,self.details]:
+            self.role.setCurrentText(layer.role)
+        for widget in [self.mode,self.angle,self.details,self.role]:
             widget.blockSignals(False)
 
     def item_changed(self, item):

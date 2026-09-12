@@ -22,6 +22,8 @@ class Stitch:
     x: float
     y: float
     command: Command = Command.STITCH
+    phase: str = "TOP"
+    object_id: str | None = None
 
 
 @dataclass
@@ -40,6 +42,34 @@ class EmbroideryObject:
     priority: int = 0
     layer_id: str | None = None
     layer_name: str | None = None
+    source_region_id: str | None = None
+    role: str = "FILL"
+    layer: int = 0
+    angle_mode: str = "MANUAL"
+    underlay_types: tuple[str, ...] = ()
+    must_stitch_before: list[str] = field(default_factory=list)
+    must_stitch_after: list[str] = field(default_factory=list)
+    allow_hidden_travel: bool = True
+    parent_object: str | None = None
+    child_objects: list[str] = field(default_factory=list)
+    centerline: list[tuple[float, float]] = field(default_factory=list)
+    left_rail: list[tuple[float, float]] = field(default_factory=list)
+    right_rail: list[tuple[float, float]] = field(default_factory=list)
+    artwork_geometry: Any = None
+    warnings: list[str] = field(default_factory=list)
+    auto_stitch: bool = True
+
+
+@dataclass
+class DependencyGraph:
+    edges: set[tuple[str, str]] = field(default_factory=set)
+
+
+@dataclass
+class EmbroideryPlan:
+    objects: list[EmbroideryObject]
+    graph: DependencyGraph = field(default_factory=DependencyGraph)
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -52,3 +82,5 @@ class EmbroideryDesign:
     objects: list[EmbroideryObject] = field(default_factory=list)
     stitches: list[Stitch] = field(default_factory=list)
     name: str = "Local embroidery"
+    plan: EmbroideryPlan | None = None
+    warnings: list[str] = field(default_factory=list)

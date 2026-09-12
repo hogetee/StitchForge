@@ -157,6 +157,7 @@ class LayerWorkflow:
         self.active_layer=index
         if self.view_only_index is not None:
             self.view_only_index=index
+            self.show_flat.setChecked(True)
         layer=self.document.layers[index]
         self.canvas.overlay_color=(60,155,215)
         self.canvas.set_mask(layer.mask)
@@ -217,6 +218,7 @@ class LayerWorkflow:
                 self.statusBar().showMessage('Select a part first, then Show selected')
                 return
             self.view_only_index=index
+            self.show_flat.setChecked(True)
             self.render_layers()
             self.statusBar().showMessage(f'Showing only {self.document.layers[index].name} · select another row to inspect it')
             return
@@ -232,13 +234,13 @@ class LayerWorkflow:
             grouped={}
             order=[]
             for layer in self.document.layers:
-                color=layer.color.lower()
+                color=(layer.color.lower(),layer.enabled,layer.mode,layer.angle,layer.role)
                 if color not in grouped:
                     grouped[color]=ArtworkLayer(
-                        f'Color {color}', layer.color, np.zeros_like(layer.mask),
+                        f'Color {layer.color}', layer.color, np.zeros_like(layer.mask),
                         enabled=layer.enabled,
                         mode=layer.mode, angle=layer.angle,
-                        protect_details=layer.protect_details)
+                        protect_details=layer.protect_details,role=layer.role)
                     order.append(color)
                 grouped[color].mask |= layer.mask
                 grouped[color].protect_details |= layer.protect_details
@@ -328,7 +330,7 @@ class LayerWorkflow:
             QMessageBox.Yes|QMessageBox.No,QMessageBox.No)==QMessageBox.Yes
 
     def open_layer_project(self):
-        path,_=QFileDialog.getOpenFileName(self,'Open editable project','','StitchForge (*.stitchforge)')
+        path,_=QFileDialog.getOpenFileName(self,'Open editable project','','StitchForge (*.stitchforge);;Recover old Threadform package (*.emb)')
         if not path or not self.confirm_replace_project():
             return
         try:
@@ -351,5 +353,19 @@ class LayerWorkflow:
                     widget.blockSignals(False)
         self.mode.setCurrentText(settings.get('mode','Auto'))
         self.order.setCurrentIndex(1 if settings.get('reverse_colors',False) else 0)
+        from embroidery_app.embroidery.profiles import get_profile,PROFILES
+        profile=get_profile(settings.get('fabric'))
+        self.fabric.blockSignals(True)
+        self.fabric.setCurrentText(profile.name if profile and profile.name in PROFILES else
+                                   'Custom' if profile else 'Legacy / no planning')
+        self.fabric.blockSignals(False)
+        self.order.setEnabled(profile is None)
+        if profile:
+            self.compensation.setValue(profile.pull_compensation_mm)
+            self.underlap.setValue(profile.underlap_mm)
+            self.underlay_spacing.setValue(profile.underlay_spacing_mm)
+            self.stagger.setValue(profile.stagger_period)
+            self.underlay_enabled.setChecked(profile.underlay_enabled)
+        self.auto_direction.setChecked(bool(settings.get('auto_direction',True)))
         self.accept_layers(document)
         self.project_dirty=False

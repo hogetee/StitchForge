@@ -101,6 +101,16 @@ Status vocabulary: NOT STARTED, IN PROGRESS, BLOCKED, DONE. DONE means the accep
 - Remaining limitations: background/semantic ambiguity still needs manual correction; many jumps remain around fragmented regions. No physical sew-out has been performed, and underlay/tie-offs/automatic trims are still absent.
 - Next action: physical sew-out and better fill travel routing; general semantic naming would require a separately validated model and dataset.
 
+## 12 — Deterministic industrial planning baseline — IMPLEMENTED, SEW-OUT PENDING
+
+- Corrected the misleading Threadform `.emb` export; retained DST and `.stitchforge`, with recovery of old ZIP packages and explicit rejection of native Wilcom imports.
+- Added object roles/provenance, conservative neck decomposition, validated dependency graphs and constrained sequencing.
+- Added configurable fabric profiles, per-object directions, underlay, compensation and underlap; staggered tatami, turning-satin inference with fallbacks, bounded travel routes and trim requests.
+- Added phase-specific preview, object/layer/type labels, entry/exit/direction overlays and sewing-order playback, plus a ten-case benchmark generator.
+- Inspected both supplied native EMB containers locally and extracted their embedded thumbnails. Native stitch/object records remain undecoded; numeric property IDs are unverified.
+- Production machine brand supplied by the user: Barudan. Model, needle, material and backing remain unknown. Physical sewing, ties, machine trim compatibility, general lettering decomposition and globally optimal routing are not complete.
+- See `docs/INDUSTRIAL_UPGRADE.md` for the implemented scope and remaining acceptance criteria. This milestone does not mark the full industrial specification production-ready.
+
 ## Verification notes
 
 The initial native launch inside the execution sandbox was blocked by macOS window services. The same startup check outside the sandbox succeeded with exit 0. Offscreen checks and simulated UI interactions run inside the sandbox. An initial worker test used a polling wait that starved Python work; replacing it with Qt's normal event loop verified the worker completes. Geometry-library numerical warnings were eliminated by using OpenCV's oriented rectangle routine for planning.

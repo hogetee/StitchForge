@@ -14,10 +14,11 @@ class ArtworkLayer:
     mode: str = "Auto"
     angle: float | None = None
     protect_details: bool = False
+    role: str = 'FILL'
 
     def copy(self):
         return ArtworkLayer(self.name, self.color, self.mask.copy(), self.id,
-                            self.enabled, self.mode, self.angle, self.protect_details)
+                            self.enabled, self.mode, self.angle, self.protect_details,self.role)
 
 
 @dataclass

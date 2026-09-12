@@ -25,3 +25,15 @@ def satin(polygon,spacing=0.4,max_length=6,angle=0,progress=None,cancel_check=No
         if hypot(b[0]-a[0],b[1]-a[1])>max_length or not polygon.buffer(1e-7).covers(LineString([a,b])):
             raise ValueError("Unsafe satin span; use tatami")
     return [Stitch(*points[0],Command.JUMP)]+[Stitch(*p) for p in points[1:]]
+
+
+def column_stitches(obj):
+    """Use local-normal rails already validated by the planning stage."""
+    points=[pair[i%2] for i,pair in enumerate(zip(obj.left_rail,obj.right_rail))]
+    if len(points)<2:
+        raise ValueError('No satin rails')
+    for a,b in zip(points,points[1:]):
+        line=LineString([a,b])
+        if line.length>obj.stitch_length or not obj.geometry.buffer(1e-7).covers(line):
+            raise ValueError('Unsafe turning satin span')
+    return [Stitch(*points[0],Command.JUMP)]+[Stitch(*p) for p in points[1:]]

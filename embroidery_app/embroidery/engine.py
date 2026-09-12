@@ -2,7 +2,13 @@ import numpy as np
 from embroidery_app.embroidery.models import EmbroideryDesign,Command,Stitch,StitchType
 from embroidery_app.embroidery.generators.running import running
 from embroidery_app.embroidery.generators.tatami import tatami
-from embroidery_app.embroidery.generators.satin import satin
+from embroidery_app.embroidery.generators.satin import satin,column_stitches
+from embroidery_app.embroidery.generators.underlay import underlay
+from embroidery_app.embroidery.profiles import get_profile
+from embroidery_app.embroidery.planning import prepare
+from embroidery_app.embroidery.decomposition import decompose
+from embroidery_app.embroidery.routing import join,choose_entry
+from shapely.ops import unary_union
 from embroidery_app.embroidery.planner import plan
 from embroidery_app.embroidery.optimizer import optimize,travel
 from embroidery_app.image_processing.vectorization import vectorize
@@ -22,7 +28,8 @@ def _check_cancel(cancel_check):
 
 def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0,
              min_area=0.3,mode="Auto",reverse_colors=False,progress=None,layer_document=None,
-             cancel_check=None):
+             cancel_check=None,fabric=None,auto_direction=True):
+    profile=get_profile(fabric)
     _check_cancel(cancel_check)
     _report(progress, 0.02, "Preparing selected artwork")
     fill_angles={}
@@ -55,6 +62,8 @@ def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0
                 obj.layer_id=layer.id
                 obj.layer_name=layer.name
                 obj.priority=index
+                obj.layer=index
+                obj.role=layer.role
                 fill_angles[obj.id]=layer.angle if layer.angle is not None else angle
             regions.extend(parts)
             planned.extend(objects)
@@ -64,6 +73,15 @@ def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0
             raise ValueError("No enabled layer survives the minimum-region filter")
     _report(progress, 0.25, f"Found {len(regions)} geometric regions")
     design=EmbroideryDesign(width,height,(image.shape[1],image.shape[0]),regions=[p for p,c in regions])
+    for obj in planned:
+        manual_layer_angle=layer_document is not None and next(
+            (p.angle for p in layer_document.layers if p.id==obj.layer_id),None) is not None
+        obj.angle_mode='AUTO' if profile and auto_direction and not manual_layer_angle else 'MANUAL'
+    if profile:
+        planned=decompose(planned)
+        design.plan=prepare(planned,profile,width,height,layer_document is not None,cancel_check)
+        planned=design.plan.objects
+        design.warnings.extend(design.plan.warnings)
     if sum(p.area for p,c in regions)/(spacing*length)>150000:
         raise ValueError("Design would exceed the 150,000-stitch V1 limit; reduce size or increase spacing")
     blocks=[]
@@ -84,13 +102,26 @@ def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0
                 path.extend(stitches[1:])
         elif obj.stitch_type==StitchType.SATIN:
             try:
-                path=satin(obj.geometry,spacing,length,obj.angle,row_progress,cancel_check)
-            except ValueError:
+                path=(column_stitches(obj) if obj.left_rail else
+                      satin(obj.geometry,spacing,length,obj.angle,row_progress,cancel_check))
+            except ValueError as error:
+                design.warnings.append(f'{obj.id}: satin fallback to tatami: {error}')
                 obj.stitch_type=StitchType.TATAMI
+                obj.underlay_types=('CONTOUR','SPARSE_FILL') if obj.underlay else ()
                 obj.angle=fill_angles.get(obj.id,angle)
-                path=tatami(obj.geometry,spacing,length,obj.angle,row_progress,cancel_check)
+                path=tatami(obj.geometry,spacing,length,obj.angle,row_progress,cancel_check,
+                            stagger_period=profile.stagger_period if profile else 1,internal_travel=bool(profile),
+                            internal_travel_limit=profile.internal_travel_limit_mm if profile else 12)
         else:
-            path=tatami(obj.geometry,spacing,length,obj.angle,row_progress,cancel_check)
+            path=tatami(obj.geometry,spacing,length,obj.angle,row_progress,cancel_check,
+                        stagger_period=profile.stagger_period if profile else 1,internal_travel=bool(profile),
+                        internal_travel_limit=profile.internal_travel_limit_mm if profile else 12)
+        path=[Stitch(s.x,s.y,s.command,s.phase,obj.id) for s in path]
+        if profile and obj.underlay:
+            path=underlay(obj,profile,cancel_check)+path
+        if profile:
+            previous=(blocks[-1][1][-1].x,blocks[-1][1][-1].y) if blocks else (0,0)
+            path=choose_entry(obj,path,previous)
         if path and any(s.command==Command.STITCH for s in path):
             obj.entry_point=(path[0].x,path[0].y)
             obj.exit_point=(path[-1].x,path[-1].y)
@@ -102,7 +133,10 @@ def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0
                 f"Generating stitches {index + 1}/{len(planned)}")
     metrics={"before":travel(blocks)}
     _report(progress, 0.87, "Optimizing stitch order")
-    if layer_document is None:
+    if profile:
+        # Objects have already been sorted subject to the dependency graph.
+        pass
+    elif layer_document is None:
         blocks=optimize(blocks,reverse_colors)
     else:
         # User layer order is a sewing constraint; optimize only within each layer.
@@ -111,19 +145,55 @@ def digitize(image,mask,width=80,height=80,colors=3,spacing=0.4,length=3,angle=0
     metrics["after"]=travel(blocks)
     _report(progress, 0.93, "Assembling thread colors")
     color=None
-    for obj,path in blocks:
+    for index,(obj,path) in enumerate(blocks):
         _check_cancel(cancel_check)
         if obj.color!=color:
             if color is not None:
                 last=design.stitches[-1]
+                if profile:
+                    design.stitches.append(Stitch(last.x,last.y,Command.TRIM,'TRAVEL',obj.id))
                 design.stitches.append(Stitch(last.x,last.y,Command.COLOR_CHANGE))
             design.thread_colors.append(obj.color)
             color=obj.color
         design.objects.append(obj)
-        design.stitches.extend(path)
+        if profile:
+            future=unary_union([other.geometry for other,_ in blocks[index+1:]
+                                if other.stitch_type!=StitchType.RUNNING])
+            for stitch in path:
+                if stitch.command==Command.JUMP and design.stitches:
+                    last=design.stitches[-1]
+                    same_color=last.command!=Command.COLOR_CHANGE
+                    # Before underlay the whole current top is still ahead. During
+                    # top stitching only later objects provide assured coverage.
+                    coverage=future.union(obj.geometry) if stitch.phase=='UNDERLAY' else future
+                    design.stitches.extend(join((last.x,last.y),(stitch.x,stitch.y),
+                        coverage if obj.allow_hidden_travel and same_color else None,
+                        length,profile.trim_distance_mm,object_id=obj.id))
+                else:
+                    design.stitches.append(stitch)
+        else:
+            design.stitches.extend(path)
     if design.stitches:
         last=design.stitches[-1]
+        if profile:
+            design.stitches.append(Stitch(last.x,last.y,Command.TRIM,'TRAVEL'))
         design.stitches.append(Stitch(last.x,last.y,Command.END))
+    if len(design.stitches)>150000:
+        raise ValueError('Design exceeds the 150,000-command limit including underlay and travel')
+    metrics['counts']={command.value:sum(s.command==command for s in design.stitches) for command in Command}
+    if profile:
+        metrics['after']={'jumps':metrics['counts']['JUMP'],'color_changes':metrics['counts']['COLOR_CHANGE'],
+            'jump_distance_mm':round(sum(np.hypot(b.x-a.x,b.y-a.y) for a,b in
+                zip(design.stitches,design.stitches[1:]) if b.command==Command.JUMP),2)}
+    metrics['phases']={phase:sum(s.command==Command.STITCH and s.phase==phase for s in design.stitches)
+                       for phase in ('TOP','UNDERLAY','TRAVEL')}
+    metrics['types']={kind.value:sum(s.command==Command.STITCH and s.phase=='TOP' and s.object_id in
+                     {o.id for o in design.objects if o.stitch_type==kind} for s in design.stitches)
+                     for kind in StitchType}
+    metrics['objects']=len(design.objects)
+    metrics['hidden_travel_mm']=round(sum(np.hypot(b.x-a.x,b.y-a.y) for a,b in
+        zip(design.stitches,design.stitches[1:]) if b.command==Command.STITCH and b.phase=='TRAVEL'),2)
+    metrics['warnings']=design.warnings
     _report(progress, 1.0, "Digitizing complete")
     if layer_document is not None:
         emitted={obj.layer_id for obj in design.objects}

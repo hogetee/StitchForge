@@ -19,6 +19,8 @@ def _png(array):
 
 def save_project(filename, image, alpha, document, settings):
     target = Path(filename)
+    if target.suffix.lower()=='.emb':
+        raise ValueError('Wilcom EMB export is unavailable. Save an editable .stitchforge project instead.')
     metadata = dict(version=1, settings=settings, notes=document.notes, layers=[])
     fd, temporary = tempfile.mkstemp(suffix=".stitchforge", dir=target.parent)
     os.close(fd)
@@ -28,7 +30,7 @@ def save_project(filename, image, alpha, document, settings):
             archive.writestr("foreground.png", _png(document.foreground))
             for i, layer in enumerate(document.layers):
                 entry = dict(id=layer.id, name=layer.name, color=layer.color, enabled=layer.enabled,
-                             mode=layer.mode, angle=layer.angle, protect_details=layer.protect_details)
+                             mode=layer.mode, angle=layer.angle, protect_details=layer.protect_details,role=layer.role)
                 metadata['layers'].append(entry)
                 archive.writestr(f"masks/{i}.png", _png(layer.mask))
             archive.writestr("project.json", json.dumps(metadata, ensure_ascii=False))
@@ -39,6 +41,9 @@ def save_project(filename, image, alpha, document, settings):
 
 
 def load_project(filename):
+    with open(filename,'rb') as source:
+        if source.read(8)==bytes.fromhex('d0cf11e0a1b11ae1'):
+            raise ValueError('This is a native Wilcom EMB. Native EMB import is not supported; open it in Wilcom.')
     with zipfile.ZipFile(filename) as archive:
         if sum(info.file_size for info in archive.infolist()) > 200_000_000:
             raise ValueError("Layer project is too large")
@@ -61,6 +66,9 @@ def load_project(filename):
         used = np.zeros_like(foreground, bool)
         ids = set()
         for i, entry in enumerate(metadata['layers']):
+            from embroidery_app.embroidery.sequence import ROLES
+            if entry.get('role','FILL') not in ROLES:
+                raise ValueError('Invalid object role')
             if not re.fullmatch(r"#[0-9a-fA-F]{6}", entry['color']) or entry['mode'] not in ('Auto','Outline','Fill'):
                 raise ValueError("Invalid layer color or strategy")
             if entry['angle'] is not None and not (isinstance(entry['angle'], (int,float)) and 0 <= entry['angle'] < 180):
@@ -74,5 +82,5 @@ def load_project(filename):
             mask = np.where(mask > 0,255,0).astype(np.uint8)
             used |= mask > 0
             document.layers.append(ArtworkLayer(str(entry['name'])[:160], entry['color'], mask, entry['id'],
-                bool(entry['enabled']),entry['mode'],entry['angle'],bool(entry.get('protect_details',False))))
+                bool(entry['enabled']),entry['mode'],entry['angle'],bool(entry.get('protect_details',False)),entry.get('role','FILL')))
         return rgba[:,:,:3].copy(), rgba[:,:,3].copy(), document, metadata.get('settings', {})
